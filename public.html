@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NightShiftPH Planner — Public View</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body data-mode="public">
+
+<div class="app-shell">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">⌘ <span id="brand-guild-name">NightShiftPH</span></span>
+      <span class="brand-sub">Guild Ops Planner</span>
+    </div>
+    <div class="topbar-right">
+      <span class="mode-badge public">Public reference · read only</span>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <button class="nav-item active" data-view="builder"><span class="ico">⚔</span> Roster</button>
+    <button class="nav-item" data-view="queue"><span class="ico">🩹</span> Time Echoes Queue</button>
+  </nav>
+
+  <main class="main">
+
+    <div class="public-banner">
+      <strong>You're viewing the public reference.</strong> Party lineups here reflect the latest saved changes from Guild Leadership and Admin Staff — check back before in-game assembly for last-minute swaps.
+    </div>
+
+    <!-- ============ TEAM BUILDER (read-only) ============ -->
+    <section id="view-builder" class="view active">
+      <div class="view-header">
+        <div>
+          <div class="view-title">Roster</div>
+          <div class="view-desc">Current party lineups across every Elite and Sub Team. The ring on each party shows role coverage — red means a gap admins haven't cleared yet.</div>
+        </div>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat-card"><div class="stat-num" id="stat-members">0</div><div class="stat-label">Total members</div></div>
+        <div class="stat-card"><div class="stat-num" id="stat-available">0</div><div class="stat-label">Available now</div></div>
+        <div class="stat-card"><div class="stat-num" id="stat-slots">0/0</div><div class="stat-label">Slots filled</div></div>
+        <div class="stat-card"><div class="stat-num" id="stat-warnings">0</div><div class="stat-label">Unresolved warnings</div></div>
+      </div>
+
+      <div class="team-tabs" id="team-tabs"></div>
+      <div class="actions" id="team-toolbar" style="margin-bottom:14px; align-items:center;"></div>
+
+      <div class="builder-layout">
+        <aside class="roster-pool">
+          <h3>Roster pool</h3>
+          <div class="pool-hint">Reference only — ask an Admin to make changes.</div>
+          <input class="pool-search" id="pool-search" placeholder="Search members…" />
+          <div class="pool-list" id="pool-list"></div>
+        </aside>
+
+        <div class="party-grid" id="party-grid"></div>
+      </div>
+    </section>
+
+    <!-- ============ TIME ECHOES QUEUE ============ -->
+    <section id="view-queue" class="view">
+      <div class="view-header">
+        <div>
+          <div class="view-title">Time Echoes Queue</div>
+          <div class="view-desc">Already cleared this week? Sign up here if you still need a hand — no need to ask in guild chat and lose track of who's covered. Pick your name, tick the dungeon(s) you're stuck on, and submit.</div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:20px;">
+        <strong style="font-size:13px;">Join the queue</strong>
+        <div class="field full" style="margin-top:12px;">
+          <label>Your in-game name</label>
+          <input id="queue-name-input" list="queue-name-datalist" placeholder="Start typing to search…" />
+          <datalist id="queue-name-datalist"></datalist>
+        </div>
+        <div class="field full" style="margin-top:12px;">
+          <label>Needs help with</label>
+          <div class="dungeon-grid" id="queue-dungeon-checks"></div>
+        </div>
+        <div class="actions" style="margin-top:14px;">
+          <button class="btn btn-primary" id="queue-submit-btn">Join queue</button>
+        </div>
+      </div>
+
+      <strong style="font-size:13px; display:block; margin-bottom:10px;">Currently in queue</strong>
+      <div id="queue-public-list"></div>
+    </section>
+
+  </main>
+</div>
+
+<div id="toast-stack"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
