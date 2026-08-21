@@ -1,4 +1,4 @@
-# NightShiftPH Planner
+# Just a simple guild planner
 
 **Ragnarök: The New World** Guild tool, basta yon, wag mo na pansinin. who the hell reads these when they are for personal use only? Go ahead, steal it, duh, im just making convenience while your poor ass is thinking about selling this LMAO! Do I still need license by then, eh ako lang gumagamit? You can do VibeCoding while VibeThinking, give yourself a round of applause.
 
@@ -24,7 +24,7 @@ Kunin mo 'tong ninakaw mo, tas buksan mo lang rekta sa browser. Spoonfeed pa kit
 
 Eto yung bash ga is go!
 python3 -m http.server 8000
-# then open http://localhost:8000/index.html
+then open http://localhost:8000/index.html
 // Static site yan, alam kong maarte ka.
 
 ## Notes for non-technical maintainers
