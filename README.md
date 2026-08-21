@@ -2,7 +2,7 @@
 
 **Ragnarök: The New World** Guild tool, basta yon, wag mo na pansinin. who the hell reads these when they are for personal use only? Go ahead, steal it, duh, im just making convenience while your poor ass is thinking about selling this LMAO! Do I still need license by then, eh ako lang gumagamit? You can do VibeCoding while VibeThinking, give yourself a round of applause.
 
-## What's here (Phase 1)
+## What's here
 
 HTML, CSS, vanilla JS, pati motivation sa sakit sa ulo ng mga ayaw makinig pati hindi nagbabasa ng announcements. Bahala na maiwan.
 
