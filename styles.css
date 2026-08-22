@@ -798,7 +798,7 @@ table.roster-table tbody tr:last-child td { border-bottom: none; }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  z-index: 200;
+  z-index: 600;
 }
 .toast {
   background: var(--panel-raised);

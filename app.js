@@ -53,7 +53,7 @@ const STORE = {
   state: null,
   ready: false,
 
-  load(onReady) {
+  load(cb) {
     FIRESTORE_DOC.onSnapshot(
       (snap) => {
         if (snap.exists) {
@@ -65,12 +65,11 @@ const STORE = {
           );
         }
         this.migrate();
-        const firstLoad = !this.ready;
         this.ready = true;
-        if (firstLoad && onReady) onReady();
-        else renderAll();
+        cb();
       },
       (err) => {
+        showLoadingError("Couldn't reach the guild database: " + err.message);
         toast("Cloud sync error: " + err.message, "danger");
       }
     );
@@ -108,6 +107,17 @@ const STORE = {
   },
 };
 
+function showLoadingError(msg) {
+  const spinner = document.getElementById("loading-spinner");
+  const text = document.getElementById("loading-text");
+  const err = document.getElementById("loading-error");
+  const retry = document.getElementById("btn-loading-retry");
+  if (spinner) spinner.style.display = "none";
+  if (text) text.textContent = "Couldn't connect.";
+  if (err) { err.textContent = msg; err.style.display = "block"; }
+  if (retry) { retry.style.display = "inline-flex"; retry.onclick = () => location.reload(); }
+}
+
 /* ---------------- Staff directory: separate Firestore collection ----------------
    Kept apart from the big guildState document (rather than as a field on it)
    because Firestore security rules need a real document per staff member to
@@ -117,16 +127,18 @@ const STAFF = {
   list: [],
   ready: false,
 
-  listen(onReady) {
+  listen(cb) {
     db.collection("staff").onSnapshot(
       (snap) => {
         this.list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        const firstLoad = !this.ready;
         this.ready = true;
-        if (firstLoad && onReady) onReady();
-        else { renderStaffPanel(); refreshCurrentStaffRecord(); }
+        cb();
+        if (!IS_PUBLIC) renderStaffPanel();
       },
-      (err) => toast("Staff sync error: " + err.message, "danger")
+      (err) => {
+        showLoadingError("Couldn't reach the staff list: " + err.message);
+        toast("Staff sync error: " + err.message, "danger");
+      }
     );
   },
 
@@ -268,25 +280,59 @@ function switchView(name) {
   renderAll();
 }
 
-/* ---------------- Auth state ---------------- */
+/* ---------------- Auth state & access gating ----------------
+   Three screens compete for visibility on the admin page: login,
+   "access pending" (signed in but not on the Staff list), and the
+   real app-shell. evaluateAccess() is the single source of truth for
+   which one shows, and it's safe to call repeatedly — every auth
+   change, every Firestore update, and every Staff-list change all
+   just call it again. */
 let currentUser = null;         // Firebase Auth user object, or null
 let currentStaffRecord = null;  // { name, email, role } from STAFF, or null if not staff
+let storeReady = false;
+let staffReady = false;
 
-function refreshCurrentStaffRecord() {
-  currentStaffRecord = currentUser ? STAFF.find(currentUser.email) : null;
+function evaluateAccess() {
+  if (IS_PUBLIC) return;
+  if (!storeReady || !staffReady) return;
+
+  const loadingScreen = document.getElementById("loading-screen");
+  const loginScreen = document.getElementById("login-screen");
+  const pendingScreen = document.getElementById("access-pending-screen");
+  const appShell = document.getElementById("app-shell");
+  if (!loadingScreen || !loginScreen || !pendingScreen || !appShell) return;
+
+  loadingScreen.style.display = "none";
+
+  if (!currentUser) {
+    loginScreen.style.display = "flex";
+    pendingScreen.style.display = "none";
+    appShell.style.display = "none";
+    return;
+  }
+
+  currentStaffRecord = STAFF.find(currentUser.email);
+  loginScreen.style.display = "none";
+
+  if (!currentStaffRecord) {
+    pendingScreen.style.display = "flex";
+    appShell.style.display = "none";
+    const pendingEmail = document.getElementById("pending-email");
+    if (pendingEmail) pendingEmail.textContent = currentUser.email;
+    return;
+  }
+
+  pendingScreen.style.display = "none";
+  appShell.style.display = "";
   updateAuthUI();
   renderAll();
 }
 
 function updateAuthUI() {
   if (IS_PUBLIC) return;
-  const banner = document.getElementById("not-staff-banner");
-  if (banner) banner.style.display = currentUser && !currentStaffRecord ? "" : "none";
   const label = document.getElementById("auth-user-label");
-  if (label && currentUser) {
-    label.textContent = currentStaffRecord
-      ? `${currentStaffRecord.name} · ${currentStaffRecord.role}`
-      : `${currentUser.email} · not staff`;
+  if (label && currentUser && currentStaffRecord) {
+    label.textContent = `${currentStaffRecord.name} · ${currentStaffRecord.role}`;
   }
 }
 
@@ -1806,10 +1852,15 @@ function handleSignIn() {
   auth.signInWithEmailAndPassword(email, password).catch((err) => showAuthError(friendlyAuthError(err)));
 }
 function handleSignUp() {
-  const email = document.getElementById("auth-email").value.trim();
+  const email = document.getElementById("auth-email").value.trim().toLowerCase();
   const password = document.getElementById("auth-password").value;
   if (!email || !password) { showAuthError("Enter both email and password."); return; }
   if (password.length < 6) { showAuthError("Password needs to be at least 6 characters."); return; }
+  if (!STAFF.ready) { showAuthError("Still connecting — wait a moment and try again."); return; }
+  if (!STAFF.find(email)) {
+    showAuthError("This email hasn't been approved yet. Ask your Guild Leader to add you under Admin → Staff first, then come back and create your account.");
+    return;
+  }
   auth.createUserWithEmailAndPassword(email, password).catch((err) => showAuthError(friendlyAuthError(err)));
 }
 
@@ -1836,35 +1887,19 @@ function init() {
   document.getElementById("btn-signin")?.addEventListener("click", handleSignIn);
   document.getElementById("btn-signup")?.addEventListener("click", handleSignUp);
   document.getElementById("btn-signout")?.addEventListener("click", () => auth.signOut());
+  document.getElementById("btn-signout-pending")?.addEventListener("click", () => auth.signOut());
   document.getElementById("auth-password")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") handleSignIn();
   });
 
-  let storeReady = false;
-  let staffReady = false;
-  function maybeReveal() {
-    if (!storeReady || !staffReady || !currentUser) return;
-    document.getElementById("loading-screen").style.display = "none";
-    document.getElementById("login-screen").style.display = "none";
-    document.getElementById("app-shell").style.display = "";
-    refreshCurrentStaffRecord();
-    renderAll();
-  }
-
-  STORE.load(() => { storeReady = true; maybeReveal(); });
-  STAFF.listen(() => { staffReady = true; maybeReveal(); });
+  STORE.load(() => { storeReady = true; evaluateAccess(); });
+  STAFF.listen(() => { staffReady = true; evaluateAccess(); });
 
   auth.onAuthStateChanged((user) => {
     currentUser = user;
-    if (!user) {
-      document.getElementById("loading-screen").style.display = "none";
-      document.getElementById("app-shell").style.display = "none";
-      document.getElementById("login-screen").style.display = "flex";
-      return;
-    }
     const err = document.getElementById("auth-error");
     if (err) err.style.display = "none";
-    maybeReveal();
+    evaluateAccess();
   });
 
   document.getElementById("btn-add-member")?.addEventListener("click", () => openMemberModal(null));

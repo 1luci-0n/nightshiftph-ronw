@@ -12,8 +12,10 @@
 
 <div id="loading-screen" class="full-overlay">
   <div class="loading-box">
-    <div class="loading-spinner"></div>
-    <div>Connecting to NightShiftPH cloud sync…</div>
+    <div class="loading-spinner" id="loading-spinner"></div>
+    <div id="loading-text">Connecting to NightShiftPH cloud sync…</div>
+    <div id="loading-error" style="display:none; max-width:320px; text-align:center; color:var(--danger); font-size:11.5px; margin-top:4px;"></div>
+    <button class="btn btn-sm btn-ghost" id="btn-loading-retry" style="display:none;">Retry</button>
   </div>
 </div>
 
@@ -38,7 +40,26 @@
       <button class="btn btn-primary" id="btn-signin">Sign in</button>
     </div>
     <div class="field-hint" style="margin-top:14px;">
-      New here? Creating an account doesn't grant access on its own — ask your Guild Leader to add your email under Admin → Staff first, then sign in above.
+      New here? Your email must already be approved by your Guild Leader under Admin → Staff before you can create an account.
+    </div>
+  </div>
+</div>
+
+<div id="access-pending-screen" class="full-overlay" style="display:none;">
+  <div class="login-box panel" style="text-align:center;">
+    <div class="brand-mark" style="margin-bottom:10px;">⌘ NightShiftPH</div>
+    <div style="font-size:13px; color:var(--text-dim); margin-bottom:6px;">
+      Signed in as <strong id="pending-email" style="color:var(--text);"></strong>
+    </div>
+    <div style="font-size:13px; color:var(--text-dim); margin-bottom:18px;">
+      This email hasn't been approved for staff access yet.
+    </div>
+    <div class="field-hint" style="margin-bottom:18px;">
+      Ask your Guild Leader to add you under Admin → Staff, then refresh this page.
+    </div>
+    <div class="actions" style="justify-content:center; gap:10px;">
+      <a class="btn btn-ghost" href="public.html">View public roster instead</a>
+      <button class="btn btn-primary" id="btn-signout-pending">Sign out</button>
     </div>
   </div>
 </div>
@@ -72,10 +93,6 @@
   </nav>
 
   <main class="main">
-
-    <div id="not-staff-banner" class="public-banner" style="display:none; border-color: rgba(227,179,65,0.4);">
-      <strong>You're signed in but not on the Staff list yet.</strong> You can look around, but editing is locked until your Guild Leader adds your email under Admin → Staff.
-    </div>
 
     <!-- ============ TEAM BUILDER ============ -->
     <section id="view-builder" class="view active">
