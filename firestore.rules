@@ -1,0 +1,43 @@
+// NightShiftPH Planner — Firestore security rules
+//
+// HOW TO USE THIS FILE:
+// This isn't automatically read by your app — it only takes effect once you
+// paste it into the Firebase Console yourself:
+//   Firebase Console → Firestore Database → Rules tab → replace everything
+//   with this file's contents → click "Publish".
+//
+// WHAT THIS DOES, IN PLAIN ENGLISH:
+// - Anyone can READ the guild roster and staff list — this is what makes
+//   public.html work without requiring members to log in.
+// - Only someone who is (a) logged in AND (b) has a document in the `staff`
+//   collection matching their email can WRITE roster changes.
+// - Only someone whose staff role is exactly "Guild Leader" can add, edit,
+//   or remove documents in the `staff` collection — meaning only the Guild
+//   Leader can grant or revoke anyone's access, enforced by the database
+//   itself, not just by the app's UI.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isStaff() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/staff/$(request.auth.token.email));
+    }
+
+    function isGuildLeader() {
+      return isStaff() &&
+        get(/databases/$(database)/documents/staff/$(request.auth.token.email)).data.role == "Guild Leader";
+    }
+
+    match /staff/{email} {
+      allow read: if true;
+      allow write: if isGuildLeader();
+    }
+
+    match /guildState/{doc} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+  }
+}
