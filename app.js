@@ -1,12 +1,10 @@
 /* ============================================================
    NightShiftPH Planner — app.js
-   Phase 1: local-storage state layer (STORE below).
-   Phase 2 hook point: replace the STORE implementation with
-   Firebase Firestore calls without touching render logic —
-   every render function reads from STORE.state only.
+   Phase 2: Firestore-backed state layer (STORE below), live-synced
+   across every admin via onSnapshot. Render logic is unchanged from
+   Phase 1 — every render function still reads from STORE.state only.
    ============================================================ */
 
-const STORAGE_KEY = "nsph_state_v2";
 const ROLE_ORDER = ["Tank", "FS", "DPS"];
 const ROLE_COLOR = { Tank: "#4e8fe3", FS: "#4cc38a", DPS: "#e2574c" };
 const PARTY_SLOT_COUNT = 5;       // fixed by RONW party size
@@ -40,18 +38,49 @@ function dungeonById(id) {
   return DUNGEONS.find((d) => d.id === id) || null;
 }
 
-/* ---------------- State layer (swap point for Phase 2 / Firebase) ---------------- */
+/* ---------------- State layer: Firestore, live-synced ----------------
+   The entire app state lives in one Firestore document
+   (guildState/main). Every admin's browser listens to it with
+   onSnapshot, so any change — from any admin, on any device —
+   appears on every other screen within a second or two.
+   STORE.save() writes locally first (instant UI feedback) and fires
+   the Firestore write in the background; the resulting onSnapshot
+   echo just re-confirms the same data, so nothing else in the app
+   needs to know or care that a network call happened. */
+const FIRESTORE_DOC = db.collection("guildState").doc("main");
+
 const STORE = {
   state: null,
+  ready: false,
 
-  load() {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    this.state = raw ? JSON.parse(raw) : defaultState();
-    this.migrate();
+  load(onReady) {
+    FIRESTORE_DOC.onSnapshot(
+      (snap) => {
+        if (snap.exists) {
+          this.state = snap.data();
+        } else {
+          this.state = defaultState();
+          FIRESTORE_DOC.set(this.state).catch((err) =>
+            toast("Couldn't create the shared guild data: " + err.message, "danger")
+          );
+        }
+        this.migrate();
+        const firstLoad = !this.ready;
+        this.ready = true;
+        if (firstLoad && onReady) onReady();
+        else renderAll();
+      },
+      (err) => {
+        toast("Cloud sync error: " + err.message, "danger");
+      }
+    );
   },
 
   save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
+    if (!this.state) return;
+    FIRESTORE_DOC.set(this.state).catch((err) =>
+      toast("Couldn't save to the cloud — check your connection. " + err.message, "danger")
+    );
   },
 
   migrate() {
@@ -62,8 +91,8 @@ const STORE = {
     }
     delete this.state.rules.Support;
     if (!this.state.events) this.state.events = [];
-    if (!this.state.staff) this.state.staff = [];
     if (!this.state.queue) this.state.queue = [];
+    delete this.state.staff; // staff now lives in its own Firestore collection, see STAFF below
     this.state.members.forEach((m) => {
       if (m.role === "Healer") m.role = "FS";
       if (!ROLE_ORDER.includes(m.role)) m.role = "DPS";
@@ -76,6 +105,42 @@ const STORE = {
       });
     });
     this.state.events.forEach((e) => { if (!e.teamIds) e.teamIds = []; });
+  },
+};
+
+/* ---------------- Staff directory: separate Firestore collection ----------------
+   Kept apart from the big guildState document (rather than as a field on it)
+   because Firestore security rules need a real document per staff member to
+   check "is this signed-in email allowed to write?" — that's also what makes
+   your account's access level real, not just a client-side dropdown anymore. */
+const STAFF = {
+  list: [],
+  ready: false,
+
+  listen(onReady) {
+    db.collection("staff").onSnapshot(
+      (snap) => {
+        this.list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const firstLoad = !this.ready;
+        this.ready = true;
+        if (firstLoad && onReady) onReady();
+        else { renderStaffPanel(); refreshCurrentStaffRecord(); }
+      },
+      (err) => toast("Staff sync error: " + err.message, "danger")
+    );
+  },
+
+  find(email) {
+    return this.list.find((s) => s.id === (email || "").toLowerCase()) || null;
+  },
+
+  add(name, email, role) {
+    const id = email.trim().toLowerCase();
+    return db.collection("staff").doc(id).set({ name: name.trim(), email: id, role });
+  },
+
+  remove(email) {
+    return db.collection("staff").doc(email).delete();
   },
 };
 
@@ -111,7 +176,6 @@ function defaultState() {
     events: [
       { id: uid("evt"), name: "Guild League — Week 1", date: todayStr(), teamIds: [], participants: [] },
     ],
-    staff: [],
     queue: [],
   };
 }
@@ -204,11 +268,32 @@ function switchView(name) {
   renderAll();
 }
 
+/* ---------------- Auth state ---------------- */
+let currentUser = null;         // Firebase Auth user object, or null
+let currentStaffRecord = null;  // { name, email, role } from STAFF, or null if not staff
+
+function refreshCurrentStaffRecord() {
+  currentStaffRecord = currentUser ? STAFF.find(currentUser.email) : null;
+  updateAuthUI();
+  renderAll();
+}
+
+function updateAuthUI() {
+  if (IS_PUBLIC) return;
+  const banner = document.getElementById("not-staff-banner");
+  if (banner) banner.style.display = currentUser && !currentStaffRecord ? "" : "none";
+  const label = document.getElementById("auth-user-label");
+  if (label && currentUser) {
+    label.textContent = currentStaffRecord
+      ? `${currentStaffRecord.name} · ${currentStaffRecord.role}`
+      : `${currentUser.email} · not staff`;
+  }
+}
+
 /* ---------------- Permissions ---------------- */
 function currentRole() {
   if (IS_PUBLIC) return "Member";
-  const sel = document.getElementById("role-select");
-  return sel ? sel.value : "Guild Leader";
+  return currentStaffRecord ? currentStaffRecord.role : "Member";
 }
 function canEdit() {
   return currentRole() !== "Member";
@@ -1022,38 +1107,52 @@ function suggestForSlot(team, partyId, idx) {
   //  - If this party already has a group started, it only completes THAT group.
   //  - If this party has no group in it (empty, or only ungrouped individuals so far),
   //    it only offers other ungrouped individuals — never pulls in someone from any group.
-  // Either way, a real group is never split up, mixed with another group, or mixed
-  // with individuals by an automatic suggestion — only a deliberate manual drag does that.
-  const partyGroupIds = new Set(
-    party.slots.filter(Boolean).map((mid) => getMember(mid)?.groupId).filter(Boolean)
+  // If the party's filled slots already show MORE than one context (a manual override
+  // already mixed a group with individuals, or two groups), Suggest refuses outright —
+  // it can't safely guess further once a deliberate manual mix has already happened.
+  const filledContexts = new Set(
+    party.slots.filter(Boolean).map((mid) => getMember(mid)?.groupId || "__individual__")
   );
-  const isGroupContext = partyGroupIds.size > 0;
+
+  if (filledContexts.size > 1) {
+    toast("This party's lineup is already a manual mix of groups/individuals — Suggest can't safely continue here. Place the remaining slots by hand.", "danger");
+    return;
+  }
+
+  const isGroupContext = filledContexts.size === 1 && !filledContexts.has("__individual__");
+  const contextGroupId = isGroupContext ? [...filledContexts][0] : null;
   const alreadySlottedIds = slottedIdsGlobally();
 
-  let pool;
-  if (isGroupContext) {
-    pool = STORE.state.members.filter(
-      (m) => m.availability === "Available" && !alreadySlottedIds.has(m.id) && m.groupId && partyGroupIds.has(m.groupId)
+  let pool = isGroupContext
+    ? STORE.state.members.filter(
+        (m) => m.availability === "Available" && !alreadySlottedIds.has(m.id) && m.groupId === contextGroupId
+      )
+    : STORE.state.members.filter(
+        (m) => m.availability === "Available" && !alreadySlottedIds.has(m.id) && !m.groupId
+      );
+
+  if (pool.length === 0) {
+    toast(
+      isGroupContext
+        ? "No remaining groupmates available for this party — place a stand-in manually if needed."
+        : "No available individual (ungrouped) members left to suggest — drag in a group, or place someone manually.",
+      "danger"
     );
-    if (pool.length === 0) {
-      toast("No remaining groupmates available for this party — place a stand-in manually if needed.", "danger");
-      return;
-    }
-  } else {
-    pool = STORE.state.members.filter(
-      (m) => m.availability === "Available" && !alreadySlottedIds.has(m.id) && !m.groupId
-    );
-    if (pool.length === 0) {
-      toast("No available individual (ungrouped) members left to suggest — drag in a group, or place someone manually.", "danger");
-      return;
-    }
+    return;
   }
 
   const missing = partyMissingRoles(party);
   const neededRole = missing.length ? missing[0].role : null;
   if (neededRole) {
     const roleMatch = pool.filter((m) => m.role === neededRole);
-    if (roleMatch.length) pool = roleMatch;
+    if (roleMatch.length === 0) {
+      toast(
+        `No ${isGroupContext ? "groupmate" : "available individual"} can fill the missing ${neededRole} role here — place someone manually if you want to relax this.`,
+        "danger"
+      );
+      return;
+    }
+    pool = roleMatch;
   }
 
   pool.sort((a, b) => b.gear - a.gear);
@@ -1293,7 +1392,7 @@ function saveAttendance() {
 }
 
 /* ================================================================
-   RENDER: Time Echoes Queue
+   RENDER: Queues (dungeon-assist sign-up)
    ================================================================ */
 let editingQueueId = null;
 
@@ -1389,7 +1488,7 @@ function submitQueueEntry() {
       claimedBy: null,
       createdAt: Date.now(),
     });
-    toast(`${member.name} added to the Time Echoes queue.`, "success");
+    toast(`${member.name} added to the queue.`, "success");
   }
   STORE.save();
   editingQueueId = null;
@@ -1455,13 +1554,13 @@ function renderQueueList() {
             </div>`;
           })
           .join("")
-      : `<div class="empty-state"><div class="es-title">Queue is empty</div>Nobody's waiting for Time Echoes help right now — nice work, guild!</div>`;
+      : `<div class="empty-state"><div class="es-title">Queue is empty</div>Nobody's waiting for a hand right now — nice work, guild!</div>`;
   }
 
   const adminWrap = document.getElementById("queue-admin-list");
   if (adminWrap) {
     if (queue.length === 0) {
-      adminWrap.innerHTML = `<div class="empty-state"><div class="es-title">Queue is empty</div>Register a member who needs Time Echoes help, or wait for members to sign up from the public view.</div>`;
+      adminWrap.innerHTML = `<div class="empty-state"><div class="es-title">Queue is empty</div>Register a member who needs help, or wait for members to sign up from the public view.</div>`;
     } else {
       adminWrap.innerHTML = queue
         .map((q, i) => {
@@ -1536,10 +1635,10 @@ function renderAdmin() {
 function renderStaffPanel() {
   const listWrap = document.getElementById("staff-list");
   if (!listWrap) return;
-  const staff = STORE.state.staff;
+  const staff = STAFF.list;
   listWrap.innerHTML = staff.length
     ? staff.map((s) => `<div style="display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-soft); font-size:12.5px;">
-        <span style="flex:1;">${escapeHtml(s.name)}</span>
+        <span style="flex:1;">${escapeHtml(s.name)} <span style="color:var(--text-faint);">${escapeHtml(s.email || s.id)}</span></span>
         <span class="role-chip" style="color:var(--gold); border-color:var(--gold-dim); background:var(--gold-glow);">${s.role}</span>
         ${canAssignAdminStaff() ? `<button class="btn btn-sm btn-danger" data-del-staff="${s.id}">Remove</button>` : ""}
       </div>`).join("")
@@ -1548,10 +1647,8 @@ function renderStaffPanel() {
   listWrap.querySelectorAll("[data-del-staff]").forEach((btn) =>
     btn.addEventListener("click", () => {
       const s = staff.find((x) => x.id === btn.dataset.delStaff);
-      if (!confirm(`Remove ${s ? s.name : "this person"} as ${s ? s.role : "staff"}?`)) return;
-      STORE.state.staff = STORE.state.staff.filter((x) => x.id !== btn.dataset.delStaff);
-      STORE.save();
-      renderStaffPanel();
+      if (!confirm(`Remove ${s ? s.name : "this person"} as ${s ? s.role : "staff"}? They'll lose editing access immediately.`)) return;
+      STAFF.remove(btn.dataset.delStaff).catch((err) => toast("Couldn't remove: " + err.message, "danger"));
     })
   );
 
@@ -1578,10 +1675,16 @@ function renderStaffPanel() {
 
 function addStaffMember() {
   const nameInput = document.getElementById("staff-name-input");
+  const emailInput = document.getElementById("staff-email-input");
   const roleSelect = document.getElementById("staff-role-select");
   const name = nameInput.value.trim();
+  const email = emailInput.value.trim().toLowerCase();
   if (!name) {
     toast("Enter a name or handle first.", "danger");
+    return;
+  }
+  if (!email || !email.includes("@")) {
+    toast("Enter the email they'll log in with.", "danger");
     return;
   }
   const role = roleSelect.value;
@@ -1589,11 +1692,13 @@ function addStaffMember() {
     toast("Only the Guild Leader can assign Co-Leaders.", "danger");
     return;
   }
-  STORE.state.staff.push({ id: uid("staff"), name, role });
-  STORE.save();
-  nameInput.value = "";
-  renderStaffPanel();
-  toast(`${name} assigned as ${role}.`, "success");
+  STAFF.add(name, email, role)
+    .then(() => {
+      nameInput.value = "";
+      emailInput.value = "";
+      toast(`${name} assigned as ${role}. They can now sign in with ${email}.`, "success");
+    })
+    .catch((err) => toast("Couldn't save: " + err.message, "danger"));
 }
 
 function saveRules() {
@@ -1621,16 +1726,6 @@ function loadSampleData() {
     ["Ithra", "Whitesmith", "DPS", 172, "Available"],
     ["Marewen", "Karnos", "DPS", 190, "Available"],
     ["Talos", "Rebel", "DPS", 165, "Unavailable"],
-    ["Waddle", "Paladin", "Tank", 300, "Unsure"],
-    ["Salvia", "Sniper", "DPS", 301, "Available"],
-    ["Onna-musha", "Night Watch", "DPS", 327, "Available"],
-    ["Bloinded", "Whitesmith", "DPS", 323, "Available"],
-    ["Oruriee", "High Priest", "FS", 199, "Available"],
-    ["Graveyard", "High Priest", "FS", 288, "Available"],
-    ["mamamoblue", "High Priest", "FS", 262, "Available"],
-    ["ahotikK", "High Wizard", "DPS", 295, "Unavailable"],
-    ["Knard", "High Wizard", "DPS", 396, "Unavailable"],
-    ["Xanxus", "Sniper", "DPS", 335, "Unavailable"],
   ];
   const g1 = { id: uid("grp"), name: "Night Shift Crew", memberIds: [] };
   STORE.state.groups.push(g1);
@@ -1685,61 +1780,132 @@ function renderAll() {
 /* ================================================================
    Init
    ================================================================ */
+/* ---------------- Auth helpers ---------------- */
+function showAuthError(msg) {
+  const el = document.getElementById("auth-error");
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = "flex";
+}
+function friendlyAuthError(err) {
+  const map = {
+    "auth/user-not-found": "No account with that email. Try \"Create account\" if you're new.",
+    "auth/wrong-password": "Wrong password.",
+    "auth/invalid-email": "That doesn't look like a valid email.",
+    "auth/email-already-in-use": "An account with that email already exists — try signing in instead.",
+    "auth/weak-password": "Password needs to be at least 6 characters.",
+    "auth/invalid-credential": "Incorrect email or password.",
+    "auth/too-many-requests": "Too many attempts — wait a bit and try again.",
+  };
+  return map[err.code] || err.message;
+}
+function handleSignIn() {
+  const email = document.getElementById("auth-email").value.trim();
+  const password = document.getElementById("auth-password").value;
+  if (!email || !password) { showAuthError("Enter both email and password."); return; }
+  auth.signInWithEmailAndPassword(email, password).catch((err) => showAuthError(friendlyAuthError(err)));
+}
+function handleSignUp() {
+  const email = document.getElementById("auth-email").value.trim();
+  const password = document.getElementById("auth-password").value;
+  if (!email || !password) { showAuthError("Enter both email and password."); return; }
+  if (password.length < 6) { showAuthError("Password needs to be at least 6 characters."); return; }
+  auth.createUserWithEmailAndPassword(email, password).catch((err) => showAuthError(friendlyAuthError(err)));
+}
+
+/* ================================================================
+   Init
+   ================================================================ */
 function init() {
-  STORE.load();
-
-  // Queue registration submit — present on the public inline form
-  document.getElementById("queue-submit-btn")?.addEventListener("click", submitQueueEntry);
-
   document.querySelectorAll(".nav-item").forEach((btn) =>
     btn.addEventListener("click", () => switchView(btn.dataset.view))
   );
 
-  if (!IS_PUBLIC) {
-    document.getElementById("role-select")?.addEventListener("change", renderAll);
+  // Queue registration submit — present on the public inline form
+  document.getElementById("queue-submit-btn")?.addEventListener("click", submitQueueEntry);
 
-    document.getElementById("btn-add-member")?.addEventListener("click", () => openMemberModal(null));
-    document.getElementById("btn-bulk-paste")?.addEventListener("click", openBulkModal);
-    document.getElementById("mf-save")?.addEventListener("click", saveMemberForm);
-    document.getElementById("bulk-save")?.addEventListener("click", parseBulkPaste);
-
-    document.getElementById("btn-add-group")?.addEventListener("click", () => openGroupModal(null));
-    document.getElementById("gf-save")?.addEventListener("click", saveGroupForm);
-    document.getElementById("gf-member-search")?.addEventListener("input", renderGroupMemberChecklist);
-
-    document.getElementById("btn-add-elite-team")?.addEventListener("click", () => createTeam("elite"));
-    document.getElementById("btn-add-sub-team")?.addEventListener("click", () => createTeam("sub"));
-
-    document.getElementById("btn-add-event")?.addEventListener("click", openEventModal);
-    document.getElementById("ef-save")?.addEventListener("click", saveEventForm);
-    document.getElementById("delete-event-confirm-input")?.addEventListener("input", checkDeleteEventInput);
-    document.getElementById("delete-event-confirm-btn")?.addEventListener("click", confirmDeleteEvent);
-    document.getElementById("att-save")?.addEventListener("click", saveAttendance);
-    document.getElementById("attendance-search")?.addEventListener("input", renderAttendanceList);
-    document.getElementById("attendance-auto-search")?.addEventListener("input", renderAttendanceList);
-
-    document.getElementById("rules-save")?.addEventListener("click", saveRules);
-    document.getElementById("btn-reset-data")?.addEventListener("click", resetAllData);
-    document.getElementById("btn-load-sample")?.addEventListener("click", loadSampleData);
-    document.getElementById("staff-add-btn")?.addEventListener("click", addStaffMember);
-
-    document.getElementById("btn-queue-add")?.addEventListener("click", () => openQueueModal(null));
-    document.getElementById("queue-modal-save")?.addEventListener("click", submitQueueEntry);
-
-    document.getElementById("inv-search")?.addEventListener("input", renderInventory);
-    document.getElementById("pool-search")?.addEventListener("input", renderRosterPool);
-
-    document.querySelectorAll("[data-close-modal]").forEach((btn) =>
-      btn.addEventListener("click", () => closeModal(btn.dataset.closeModal))
-    );
-    document.querySelectorAll(".modal-backdrop").forEach((bd) =>
-      bd.addEventListener("click", (e) => {
-        if (e.target === bd) bd.classList.remove("open");
-      })
-    );
+  if (IS_PUBLIC) {
+    STORE.load(() => {
+      document.getElementById("loading-screen").style.display = "none";
+      document.getElementById("app-shell").style.display = "";
+      renderAll();
+    });
+    return;
   }
 
-  renderAll();
+  document.getElementById("btn-signin")?.addEventListener("click", handleSignIn);
+  document.getElementById("btn-signup")?.addEventListener("click", handleSignUp);
+  document.getElementById("btn-signout")?.addEventListener("click", () => auth.signOut());
+  document.getElementById("auth-password")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") handleSignIn();
+  });
+
+  let storeReady = false;
+  let staffReady = false;
+  function maybeReveal() {
+    if (!storeReady || !staffReady || !currentUser) return;
+    document.getElementById("loading-screen").style.display = "none";
+    document.getElementById("login-screen").style.display = "none";
+    document.getElementById("app-shell").style.display = "";
+    refreshCurrentStaffRecord();
+    renderAll();
+  }
+
+  STORE.load(() => { storeReady = true; maybeReveal(); });
+  STAFF.listen(() => { staffReady = true; maybeReveal(); });
+
+  auth.onAuthStateChanged((user) => {
+    currentUser = user;
+    if (!user) {
+      document.getElementById("loading-screen").style.display = "none";
+      document.getElementById("app-shell").style.display = "none";
+      document.getElementById("login-screen").style.display = "flex";
+      return;
+    }
+    const err = document.getElementById("auth-error");
+    if (err) err.style.display = "none";
+    maybeReveal();
+  });
+
+  document.getElementById("btn-add-member")?.addEventListener("click", () => openMemberModal(null));
+  document.getElementById("btn-bulk-paste")?.addEventListener("click", openBulkModal);
+  document.getElementById("mf-save")?.addEventListener("click", saveMemberForm);
+  document.getElementById("bulk-save")?.addEventListener("click", parseBulkPaste);
+
+  document.getElementById("btn-add-group")?.addEventListener("click", () => openGroupModal(null));
+  document.getElementById("gf-save")?.addEventListener("click", saveGroupForm);
+  document.getElementById("gf-member-search")?.addEventListener("input", renderGroupMemberChecklist);
+
+  document.getElementById("btn-add-elite-team")?.addEventListener("click", () => createTeam("elite"));
+  document.getElementById("btn-add-sub-team")?.addEventListener("click", () => createTeam("sub"));
+
+  document.getElementById("btn-add-event")?.addEventListener("click", openEventModal);
+  document.getElementById("ef-save")?.addEventListener("click", saveEventForm);
+  document.getElementById("delete-event-confirm-input")?.addEventListener("input", checkDeleteEventInput);
+  document.getElementById("delete-event-confirm-btn")?.addEventListener("click", confirmDeleteEvent);
+  document.getElementById("att-save")?.addEventListener("click", saveAttendance);
+  document.getElementById("attendance-search")?.addEventListener("input", renderAttendanceList);
+  document.getElementById("attendance-auto-search")?.addEventListener("input", renderAttendanceList);
+
+  document.getElementById("rules-save")?.addEventListener("click", saveRules);
+  document.getElementById("btn-reset-data")?.addEventListener("click", resetAllData);
+  document.getElementById("btn-load-sample")?.addEventListener("click", loadSampleData);
+  document.getElementById("staff-add-btn")?.addEventListener("click", addStaffMember);
+
+  document.getElementById("btn-queue-add")?.addEventListener("click", () => openQueueModal(null));
+  document.getElementById("queue-modal-save")?.addEventListener("click", submitQueueEntry);
+
+  document.getElementById("inv-search")?.addEventListener("input", renderInventory);
+  document.getElementById("pool-search")?.addEventListener("input", renderRosterPool);
+
+  document.querySelectorAll("[data-close-modal]").forEach((btn) =>
+    btn.addEventListener("click", () => closeModal(btn.dataset.closeModal))
+  );
+  document.querySelectorAll(".modal-backdrop").forEach((bd) =>
+    bd.addEventListener("click", (e) => {
+      if (e.target === bd) bd.classList.remove("open");
+    })
+  );
 }
 
 document.addEventListener("DOMContentLoaded", init);

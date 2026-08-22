@@ -10,12 +10,18 @@
 </head>
 <body data-mode="public">
 
-<div class="app-shell">
+<div id="loading-screen" class="full-overlay">
+  <div class="loading-box">
+    <div class="loading-spinner"></div>
+    <div>Connecting to NightShiftPH cloud sync…</div>
+  </div>
+</div>
+
+<div class="app-shell" id="app-shell" style="display:none;">
 
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark">⌘ <span id="brand-guild-name">NightShiftPH</span></span>
-      <span class="brand-sub">Guild Ops Planner</span>
     </div>
     <div class="topbar-right">
       <span class="mode-badge public">Public reference · read only</span>
@@ -24,7 +30,7 @@
 
   <nav class="sidebar">
     <button class="nav-item active" data-view="builder"><span class="ico">⚔</span> Roster</button>
-    <button class="nav-item" data-view="queue"><span class="ico">🩹</span> Time Echoes Queue</button>
+    <button class="nav-item" data-view="queue"><span class="ico">🩹</span> Queues</button>
   </nav>
 
   <main class="main">
@@ -68,7 +74,7 @@
     <section id="view-queue" class="view">
       <div class="view-header">
         <div>
-          <div class="view-title">Time Echoes Queue</div>
+          <div class="view-title">Queues</div>
           <div class="view-desc">Already cleared this week? Sign up here if you still need a hand — no need to ask in guild chat and lose track of who's covered. Pick your name, tick the dungeon(s) you're stuck on, and submit.</div>
         </div>
       </div>
@@ -98,6 +104,9 @@
 
 <div id="toast-stack"></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="firebase-init.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
