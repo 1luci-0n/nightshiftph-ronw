@@ -156,6 +156,119 @@ const STAFF = {
   },
 };
 
+/* ---------------- Presence: who's online right now ----------------
+   Firestore has no built-in presence system (that's a Realtime Database
+   feature), so this approximates it with a heartbeat: every signed-in
+   admin writes their own presence doc every 20s, and everyone else
+   treats a doc as "online" only if its heartbeat is recent. Admin-only —
+   not shown on the public page. */
+const PRESENCE_STALE_MS = 50000;
+
+const PRESENCE = {
+  list: [],
+  intervalId: null,
+  docRef: null,
+
+  start() {
+    if (IS_PUBLIC || !currentUser) return;
+    this.docRef = db.collection("presence").doc(currentUser.uid);
+    const beat = () => {
+      this.docRef.set({
+        name: currentStaffRecord ? currentStaffRecord.name : currentUser.email,
+        role: currentStaffRecord ? currentStaffRecord.role : "",
+        lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
+      }).catch(() => {});
+    };
+    beat();
+    this.intervalId = setInterval(beat, 20000);
+    this.listen();
+  },
+
+  stop() {
+    if (this.intervalId) clearInterval(this.intervalId);
+    this.intervalId = null;
+    if (this.docRef) this.docRef.delete().catch(() => {});
+    this.docRef = null;
+    this.list = [];
+    renderPresence();
+  },
+
+  listen() {
+    db.collection("presence").onSnapshot((snap) => {
+      const now = Date.now();
+      this.list = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((p) => p.lastSeen && p.lastSeen.toDate && now - p.lastSeen.toDate().getTime() < PRESENCE_STALE_MS);
+      renderPresence();
+    }, () => {});
+  },
+};
+
+function renderPresence() {
+  const wrap = document.getElementById("presence-pill");
+  if (!wrap) return;
+  if (!PRESENCE.list.length) { wrap.style.display = "none"; return; }
+  wrap.style.display = "flex";
+  const names = PRESENCE.list.map((p) => (p.id === currentUser?.uid ? "You" : (p.name || "").split(" ")[0] || "Someone"));
+  wrap.innerHTML = `<span class="presence-dot"></span> ${names.join(", ")} online`;
+}
+
+/* ---------------- Recent activity: lightweight, admin-only feed ----------------
+   This is intentionally lightweight — only the handful of meaningful actions
+   below are logged, not every drag or slot change. The full, detailed audit
+   log (every action, filterable, exportable) is a separate future feature
+   that will live alongside this same panel in the Admin tab. */
+const ACTIVITY = {
+  list: [],
+
+  listen() {
+    db.collection("activity").orderBy("timestamp", "desc").limit(15).onSnapshot(
+      (snap) => {
+        this.list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        renderActivityFeed();
+      },
+      (err) => toast("Activity feed error: " + err.message, "danger")
+    );
+  },
+
+  log(message) {
+    if (IS_PUBLIC || !currentStaffRecord) return;
+    db.collection("activity").add({
+      message,
+      actorName: currentStaffRecord.name,
+      actorRole: currentStaffRecord.role,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+    }).catch(() => {});
+  },
+};
+
+function timeAgo(date) {
+  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diff < 10) return "just now";
+  if (diff < 60) return diff + "s ago";
+  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+  return Math.floor(diff / 86400) + "d ago";
+}
+
+function renderActivityFeed() {
+  const wrap = document.getElementById("activity-feed-list");
+  if (!wrap) return;
+  if (!ACTIVITY.list.length) {
+    wrap.innerHTML = `<div style="color:var(--text-faint); font-size:11.5px; padding:6px 0;">No activity yet.</div>`;
+    return;
+  }
+  wrap.innerHTML = ACTIVITY.list
+    .map((a) => {
+      const when = a.timestamp && a.timestamp.toDate ? timeAgo(a.timestamp.toDate()) : "just now";
+      return `<div style="display:flex; gap:8px; padding:6px 0; border-bottom:1px solid var(--border-soft); font-size:12px;">
+        <span style="color:var(--text-faint); font-family:var(--font-mono); font-size:10.5px; min-width:52px; flex-shrink:0;">${when}</span>
+        <span><strong>${escapeHtml(a.actorName || "Someone")}</strong> ${escapeHtml(a.message || "")}</span>
+      </div>`;
+    })
+    .join("");
+}
+
 function uid(prefix) {
   return prefix + "_" + Math.random().toString(36).slice(2, 9);
 }
@@ -291,6 +404,7 @@ let currentUser = null;         // Firebase Auth user object, or null
 let currentStaffRecord = null;  // { name, email, role } from STAFF, or null if not staff
 let storeReady = false;
 let staffReady = false;
+let collaborationStarted = false; // guards PRESENCE/ACTIVITY from starting more than once
 
 function evaluateAccess() {
   if (IS_PUBLIC) return;
@@ -305,6 +419,7 @@ function evaluateAccess() {
   loadingScreen.style.display = "none";
 
   if (!currentUser) {
+    if (collaborationStarted) { PRESENCE.stop(); collaborationStarted = false; }
     loginScreen.style.display = "flex";
     pendingScreen.style.display = "none";
     appShell.style.display = "none";
@@ -315,6 +430,7 @@ function evaluateAccess() {
   loginScreen.style.display = "none";
 
   if (!currentStaffRecord) {
+    if (collaborationStarted) { PRESENCE.stop(); collaborationStarted = false; }
     pendingScreen.style.display = "flex";
     appShell.style.display = "none";
     const pendingEmail = document.getElementById("pending-email");
@@ -325,6 +441,11 @@ function evaluateAccess() {
   pendingScreen.style.display = "none";
   appShell.style.display = "";
   updateAuthUI();
+  if (!collaborationStarted) {
+    collaborationStarted = true;
+    PRESENCE.start();
+    ACTIVITY.listen();
+  }
   renderAll();
 }
 
@@ -498,6 +619,7 @@ function renderInventory() {
 }
 
 function removeMember(id) {
+  const m = getMember(id);
   STORE.state.members = STORE.state.members.filter((m) => m.id !== id);
   STORE.state.teams.forEach((t) =>
     t.parties.forEach((p) => {
@@ -505,6 +627,7 @@ function removeMember(id) {
     })
   );
   STORE.save();
+  ACTIVITY.log(`removed member "${m?.name || "unknown"}"`);
   renderAll();
   toast("Member removed.", "danger");
 }
@@ -578,9 +701,11 @@ function saveMemberForm() {
   };
   if (editingMemberId) {
     Object.assign(getMember(editingMemberId), data);
+    ACTIVITY.log(`edited member "${name}"`);
     toast("Member updated.", "success");
   } else {
     STORE.state.members.push({ id: uid("mem"), ...data });
+    ACTIVITY.log(`added member "${name}"`);
     toast("Member added.", "success");
   }
   STORE.save();
@@ -669,9 +794,11 @@ function renderGroups() {
     btn.addEventListener("click", () => {
       if (confirm("Delete this group? Members stay on the roster but become unassigned.")) {
         const gid = btn.dataset.delGroup;
+        const gname = getGroup(gid)?.name || "unknown";
         STORE.state.groups = STORE.state.groups.filter((g) => g.id !== gid);
         STORE.state.members.forEach((m) => { if (m.groupId === gid) m.groupId = null; });
         STORE.save();
+        ACTIVITY.log(`deleted Bond "${gname}"`);
         renderAll();
       }
     })
@@ -773,6 +900,7 @@ function saveGroupForm() {
   });
 
   STORE.save();
+  ACTIVITY.log(editingGroupId ? `edited Bond "${name}"` : `created Bond "${name}"`);
   closeModal("group-modal");
   renderAll();
   toast(editingGroupId ? "Group updated." : "Group created.", "success");
@@ -809,6 +937,7 @@ function createTeam(type) {
   STORE.state.teams.push(team);
   activeTeamId = team.id;
   STORE.save();
+  ACTIVITY.log(`created "${team.name}"`);
   renderTeamBuilder();
   renderTeamControls();
   toast(`${label} created.`, "success");
@@ -825,6 +954,7 @@ function deleteTeam(teamId) {
   STORE.state.teams = STORE.state.teams.filter((t) => t.id !== teamId);
   if (activeTeamId === teamId) activeTeamId = STORE.state.teams[0]?.id || null;
   STORE.save();
+  ACTIVITY.log(`deleted "${team.name}"`);
   renderTeamBuilder();
   renderTeamControls();
   toast("Team deleted.", "danger");
@@ -1336,6 +1466,7 @@ function saveEventForm() {
     participants: [],
   });
   STORE.save();
+  ACTIVITY.log(`created event "${name}"`);
   closeModal("event-modal");
   renderAll();
   toast("Event created.", "success");
@@ -1368,6 +1499,7 @@ function confirmDeleteEvent() {
   const ev = STORE.state.events.find((e) => e.id === pendingDeleteEventId);
   STORE.state.events = STORE.state.events.filter((e) => e.id !== pendingDeleteEventId);
   STORE.save();
+  ACTIVITY.log(`deleted event "${ev?.name || "unknown"}"`);
   closeModal("delete-event-modal");
   pendingDeleteEventId = null;
   renderAll();
@@ -1534,6 +1666,7 @@ function submitQueueEntry() {
       claimedBy: null,
       createdAt: Date.now(),
     });
+    ACTIVITY.log(`added "${member.name}" to the queue`);
     toast(`${member.name} added to the queue.`, "success");
   }
   STORE.save();
@@ -1564,8 +1697,11 @@ function toggleClaim(id) {
 
 function markQueueHelped(id) {
   if (!confirm("Mark this member as helped and remove them from the queue?")) return;
+  const q = STORE.state.queue.find((x) => x.id === id);
+  const m = q ? getMember(q.memberId) : null;
   STORE.state.queue = STORE.state.queue.filter((q) => q.id !== id);
   STORE.save();
+  ACTIVITY.log(`marked "${m?.name || "someone"}" as helped in the queue`);
   renderQueue();
   toast("Marked as helped — removed from queue.", "success");
 }
@@ -1694,7 +1830,9 @@ function renderStaffPanel() {
     btn.addEventListener("click", () => {
       const s = staff.find((x) => x.id === btn.dataset.delStaff);
       if (!confirm(`Remove ${s ? s.name : "this person"} as ${s ? s.role : "staff"}? They'll lose editing access immediately.`)) return;
-      STAFF.remove(btn.dataset.delStaff).catch((err) => toast("Couldn't remove: " + err.message, "danger"));
+      STAFF.remove(btn.dataset.delStaff)
+        .then(() => ACTIVITY.log(`removed ${s?.name || "someone"} from staff`))
+        .catch((err) => toast("Couldn't remove: " + err.message, "danger"));
     })
   );
 
@@ -1742,6 +1880,7 @@ function addStaffMember() {
     .then(() => {
       nameInput.value = "";
       emailInput.value = "";
+      ACTIVITY.log(`assigned ${name} (${email}) as ${role}`);
       toast(`${name} assigned as ${role}. They can now sign in with ${email}.`, "success");
     })
     .catch((err) => toast("Couldn't save: " + err.message, "danger"));
@@ -1755,6 +1894,7 @@ function saveRules() {
   });
   STORE.state.guildName = document.getElementById("guild-name-input").value.trim() || "NightShiftPH";
   STORE.save();
+  ACTIVITY.log("updated composition rules");
   renderAll();
   toast("Composition rules updated — party warnings recalculated.", "success");
 }

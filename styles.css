@@ -137,6 +137,16 @@ input::placeholder, textarea::placeholder { color: var(--text-faint); }
   font-size: 12px;
 }
 
+.presence-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  display: inline-block;
+  margin-right: 2px;
+  box-shadow: 0 0 6px var(--success);
+}
+
 .mode-badge {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -156,40 +166,43 @@ input::placeholder, textarea::placeholder { color: var(--text-faint); }
 .sidebar {
   background: var(--panel);
   border-right: 1px solid var(--border-soft);
-  padding: 16px 10px;
+  padding: 16px 12px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 7px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
+  gap: 12px;
+  padding: 13px 14px;
+  border-radius: var(--radius);
   color: var(--text-dim);
-  background: transparent;
-  border: none;
+  background: var(--panel-alt);
+  border: 1px solid var(--border-soft);
   text-align: left;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.01em;
+  transition: border-color .15s, background .15s, transform .1s;
 }
-.nav-item:hover { background: var(--panel-alt); color: var(--text); }
+.nav-item:hover { background: var(--panel-raised); color: var(--text); border-color: var(--border); }
+.nav-item:active { transform: scale(0.98); }
 .nav-item.active {
   background: var(--panel-raised);
   color: var(--gold);
-  box-shadow: inset 2px 0 0 var(--gold);
+  border-color: var(--gold-dim);
+  box-shadow: 0 0 0 1px var(--gold-dim) inset;
 }
-.nav-item .ico { width: 16px; text-align: center; opacity: 0.85; font-size: 13px; }
+.nav-item .ico { width: 22px; text-align: center; opacity: 0.9; font-size: 17px; flex-shrink: 0; }
 
 .nav-item-disabled {
   position: relative;
   opacity: 0.4;
   cursor: not-allowed;
 }
-.nav-item-disabled:hover { background: transparent; color: var(--text-dim); }
+.nav-item-disabled:hover { background: var(--panel-alt); color: var(--text-dim); border-color: var(--border-soft); }
 .nav-item-disabled::after {
   content: attr(data-tooltip);
   position: absolute;
