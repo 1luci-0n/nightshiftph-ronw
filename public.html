@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-mode="public">
+<script>try{document.body.dataset.theme=localStorage.getItem("nsph_theme_public")||"dark";}catch(e){}</script>
 
 <div id="loading-screen" class="full-overlay">
   <div class="loading-box">
@@ -26,6 +27,12 @@
       <span class="brand-mark">⌘ <span id="brand-guild-name">NightShiftPH</span></span>
     </div>
     <div class="topbar-right">
+      <div class="role-pill">
+        <select id="theme-select" title="Theme">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+      </div>
       <span class="mode-badge public">Public reference · read only</span>
     </div>
   </header>
@@ -34,6 +41,7 @@
     <button class="nav-item active" data-view="builder"><span class="ico">⚔</span> Roster</button>
     <button class="nav-item" data-view="queue"><span class="ico">🩹</span> Queues</button>
     <button class="nav-item nav-item-disabled" data-tooltip="Feature will be available soon"><span class="ico">🎟</span> Raffle</button>
+    <button class="nav-item nav-item-disabled" data-tooltip="In progress — coming soon"><span class="ico">📣</span> Announcements</button>
   </nav>
 
   <main class="main">

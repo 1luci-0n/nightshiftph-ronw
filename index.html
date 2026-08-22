@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-mode="admin">
+<script>try{document.body.dataset.theme=localStorage.getItem("nsph_theme_admin")||"dark";}catch(e){}</script>
 
 <div id="loading-screen" class="full-overlay">
   <div class="loading-box">
@@ -72,6 +73,16 @@
     </div>
     <div class="topbar-right">
       <span class="mode-badge">Live · Firebase sync</span>
+      <div class="role-pill">
+        <select id="theme-select" title="Theme">
+          <option value="dark">Dark</option>
+          <option value="lighter-dark">Lighter Dark</option>
+          <option value="light">Light</option>
+          <option value="pink">Pink</option>
+          <option value="cyan">Cyan</option>
+          <option value="gold">Gold</option>
+        </select>
+      </div>
       <div class="role-pill" id="presence-pill" style="display:none;"></div>
       <div class="role-pill" id="auth-status-pill">
         <span id="auth-user-label"></span>
@@ -87,6 +98,7 @@
     <button class="nav-item" data-view="groups"><span class="ico">◈</span> Bond</button>
     <button class="nav-item" data-view="queue"><span class="ico">🩹</span> Queues</button>
     <button class="nav-item nav-item-disabled" data-tooltip="Feature will be available soon"><span class="ico">🎟</span> Raffle</button>
+    <button class="nav-item nav-item-disabled" data-tooltip="In progress — coming soon"><span class="ico">📣</span> Announcements</button>
     <button class="nav-item" data-view="admin"><span class="ico">⚙</span> Admin</button>
     <div class="sidebar-footer">
       Phase 1 prototype — data lives in this browser only. Firebase live sync arrives in Phase 2.
@@ -261,6 +273,16 @@
           A lightweight glance at who changed what — members, groups, teams, events, staff, and rules. This is intentionally kept simple; a full detailed audit log (every action, filterable) is a planned addition that will live in this same section.
         </div>
         <div id="activity-feed-list" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="panel" style="margin-top:16px; opacity:0.6;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <strong style="font-size:13px;">Full audit log</strong>
+          <span style="font-size:10px; text-transform:uppercase; letter-spacing:0.05em; padding:2px 8px; border-radius:20px; border:1px solid var(--border); color:var(--text-faint);">In progress</span>
+        </div>
+        <div class="view-desc" style="margin-top:4px;">
+          A complete, filterable, exportable record of every admin action — who, what, and exactly when — for full cross-verification. Builds on the Recent Activity feed above. Coming soon.
+        </div>
       </div>
 
       <div class="panel" style="margin-top:16px;">

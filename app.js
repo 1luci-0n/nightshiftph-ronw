@@ -2004,10 +2004,37 @@ function handleSignUp() {
   auth.createUserWithEmailAndPassword(email, password).catch((err) => showAuthError(friendlyAuthError(err)));
 }
 
+/* ---------------- Theme picker ----------------
+   Purely a personal display preference, not shared guild data, so it
+   lives in localStorage (per browser/device) rather than Firestore.
+   Admin and public pages use separate keys so an admin's theme choice
+   never leaks onto the page regular members see, and vice versa. */
+const THEME_KEY = IS_PUBLIC ? "nsph_theme_public" : "nsph_theme_admin";
+const ALLOWED_THEMES = IS_PUBLIC
+  ? ["dark", "light"]
+  : ["dark", "lighter-dark", "light", "pink", "cyan", "gold"];
+
+function applyTheme(theme) {
+  const safe = ALLOWED_THEMES.includes(theme) ? theme : "dark";
+  document.body.dataset.theme = safe;
+  try { localStorage.setItem(THEME_KEY, safe); } catch (e) {}
+  const sel = document.getElementById("theme-select");
+  if (sel) sel.value = safe;
+}
+
+function initTheme() {
+  let saved = "dark";
+  try { saved = localStorage.getItem(THEME_KEY) || "dark"; } catch (e) {}
+  applyTheme(saved);
+  document.getElementById("theme-select")?.addEventListener("change", (e) => applyTheme(e.target.value));
+}
+
 /* ================================================================
    Init
    ================================================================ */
 function init() {
+  initTheme();
+
   document.querySelectorAll(".nav-item").forEach((btn) =>
     btn.addEventListener("click", () => switchView(btn.dataset.view))
   );

@@ -1,11 +1,16 @@
 /* ============================================================
    NightShiftPH Planner — design tokens
-   Palette: guild war-room — near-black base, amber command accent,
-   role colors borrowed from party-frame conventions (tank/heal/dps/support)
+   Six themes total, switched via body[data-theme="..."]. Dark is the
+   default/fallback (defined on :root); every other theme overrides
+   the same variable set. Role colors (tank/FS/DPS) and status colors
+   (danger/success) stay constant across every theme on purpose —
+   they're functional signals, not decoration, so they shouldn't
+   change meaning depending on which theme an admin picked.
    ============================================================ */
 :root {
   --bg: #0d0f14;
   --bg-grid: #10131a;
+  --bg-glow: rgba(227, 179, 65, 0.05);
   --panel: #161a22;
   --panel-alt: #1c212b;
   --panel-raised: #232935;
@@ -38,13 +43,108 @@
   --radius-lg: 14px;
 }
 
+/* ---------- Light: clean daylight workspace ---------- */
+body[data-theme="light"] {
+  --bg: #f4f2ee;
+  --bg-grid: #eae5da;
+  --bg-glow: rgba(184, 134, 44, 0.05);
+  --panel: #ffffff;
+  --panel-alt: #f7f5f0;
+  --panel-raised: #efece4;
+  --border: #ddd6c9;
+  --border-soft: #e8e3d8;
+  --text: #26241f;
+  --text-dim: #6b6558;
+  --text-faint: #9a9384;
+
+  --gold: #b8862c;
+  --gold-dim: #8f6a22;
+  --gold-glow: rgba(184, 134, 44, 0.14);
+}
+
+/* ---------- Lighter Dark: same mood as Dark, less contrast/harshness ---------- */
+body[data-theme="lighter-dark"] {
+  --bg: #1a1d24;
+  --bg-grid: #20242c;
+  --bg-glow: rgba(227, 179, 65, 0.05);
+  --panel: #22262f;
+  --panel-alt: #282d38;
+  --panel-raised: #313743;
+  --border: #3a4150;
+  --border-soft: #2e333e;
+  --text: #e8e6e1;
+  --text-dim: #a3aabb;
+  --text-faint: #6e7688;
+
+  --gold: #e3b341;
+  --gold-dim: #a9843a;
+  --gold-glow: rgba(227, 179, 65, 0.18);
+}
+
+/* ---------- Pink: soft, warm, flowery mood — colors only, no motifs ---------- */
+body[data-theme="pink"] {
+  --bg: #fdf3f6;
+  --bg-grid: #f8e7ec;
+  --bg-glow: rgba(212, 84, 138, 0.05);
+  --panel: #ffffff;
+  --panel-alt: #fbeef2;
+  --panel-raised: #f7e3ea;
+  --border: #f0cdd9;
+  --border-soft: #f6dfe6;
+  --text: #3a2530;
+  --text-dim: #8a6b78;
+  --text-faint: #b593a1;
+
+  --gold: #d4548a;
+  --gold-dim: #a83e6c;
+  --gold-glow: rgba(212, 84, 138, 0.14);
+}
+
+/* ---------- Cyan: dark-based, teal accent, kept deliberately muted ---------- */
+body[data-theme="cyan"] {
+  --bg: #0c1518;
+  --bg-grid: #101c20;
+  --bg-glow: rgba(53, 182, 194, 0.05);
+  --panel: #121e22;
+  --panel-alt: #16262b;
+  --panel-raised: #1c2f35;
+  --border: #24404a;
+  --border-soft: #1a2e34;
+  --text: #dceef0;
+  --text-dim: #85a8ae;
+  --text-faint: #4f7278;
+
+  --gold: #35b6c2;
+  --gold-dim: #278a93;
+  --gold-glow: rgba(53, 182, 194, 0.16);
+}
+
+/* ---------- Gold: dark-based, warmer + brighter shine than default Dark ---------- */
+body[data-theme="gold"] {
+  --bg: #14100a;
+  --bg-grid: #1c160d;
+  --bg-glow: rgba(240, 193, 75, 0.07);
+  --panel: #1e1810;
+  --panel-alt: #251d13;
+  --panel-raised: #2e2417;
+  --border: #40331f;
+  --border-soft: #332a19;
+  --text: #f2e9d8;
+  --text-dim: #bfae8c;
+  --text-faint: #8a7b5f;
+
+  --gold: #f0c14b;
+  --gold-dim: #c99a2e;
+  --gold-glow: rgba(240, 193, 75, 0.24);
+}
+
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 
 body {
   margin: 0;
   background:
-    radial-gradient(1200px 600px at 15% -10%, rgba(227,179,65,0.05), transparent 60%),
+    radial-gradient(1200px 600px at 15% -10%, var(--bg-glow), transparent 60%),
     repeating-linear-gradient(0deg, var(--bg-grid) 0 1px, transparent 1px 48px),
     repeating-linear-gradient(90deg, var(--bg-grid) 0 1px, transparent 1px 48px),
     var(--bg);
@@ -53,6 +153,7 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  transition: background-color .2s, color .2s;
 }
 
 ::selection { background: var(--gold-glow); color: var(--text); }
