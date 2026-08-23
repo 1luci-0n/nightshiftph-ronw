@@ -10,7 +10,7 @@ const ROLE_COLOR = { Tank: "#4e8fe3", FS: "#4cc38a", DPS: "#e2574c" };
 const PARTY_SLOT_COUNT = 5;       // fixed by RONW party size
 const MAX_PARTIES_PER_TEAM = 8;
 const MIN_PARTIES_PER_TEAM = 1;
-const MAX_TEAMS_PER_TYPE = 3;     // up to 3 Elite Teams and up to 3 Sub Teams
+const MAX_TEAMS_PER_TYPE = 5;     // up to 5 Elite Teams and up to 5 Sub Teams
 const MAX_GROUP_SIZE = 5;         // groups are capped to match party size exactly
 const IS_PUBLIC = document.body.dataset.mode === "public";
 
@@ -441,6 +441,7 @@ function evaluateAccess() {
   pendingScreen.style.display = "none";
   appShell.style.display = "";
   updateAuthUI();
+  applyTheme(currentStaffRecord.theme || "dark");
   if (!collaborationStarted) {
     collaborationStarted = true;
     PRESENCE.start();
@@ -458,6 +459,8 @@ function updateAuthUI() {
 }
 
 /* ---------------- Permissions ---------------- */
+const DEV_ALLOWED_EMAIL = "doomsong01@gmail.com";
+
 function currentRole() {
   if (IS_PUBLIC) return "Member";
   return currentStaffRecord ? currentStaffRecord.role : "Member";
@@ -466,13 +469,16 @@ function canEdit() {
   return currentRole() !== "Member";
 }
 function canManageAdmin() {
-  return currentRole() === "Guild Leader" || currentRole() === "Co-Leader";
+  return currentRole() === "Guild Leader" || currentRole() === "Co-Leader" || currentRole() === "Developer";
 }
 function canAssignCoLeader() {
   return currentRole() === "Guild Leader";
 }
 function canAssignAdminStaff() {
-  return currentRole() === "Guild Leader" || currentRole() === "Co-Leader";
+  return currentRole() === "Guild Leader" || currentRole() === "Co-Leader" || currentRole() === "Developer";
+}
+function canAccessDevTools() {
+  return !IS_PUBLIC && !!currentUser && (currentUser.email || "").toLowerCase() === DEV_ALLOWED_EMAIL;
 }
 
 /* ================================================================
@@ -482,21 +488,10 @@ function renderStats() {
   const el = document.getElementById("stat-members");
   if (!el) return;
   const s = STORE.state;
-  const totalSlots = s.teams.reduce((sum, t) => sum + t.parties.length * PARTY_SLOT_COUNT, 0);
-  const filled = s.teams.reduce(
-    (sum, t) => sum + t.parties.reduce((s2, p) => s2 + filledSlotCount(p), 0),
-    0
-  );
   const available = s.members.filter((m) => m.availability === "Available").length;
-  const warnParties = s.teams.reduce(
-    (sum, t) => sum + t.parties.filter((p) => partyMissingRoles(p).length > 0 && !p.verified).length,
-    0
-  );
 
   document.getElementById("stat-members").textContent = s.members.length;
   document.getElementById("stat-available").textContent = available;
-  document.getElementById("stat-slots").textContent = `${filled}/${totalSlots}`;
-  document.getElementById("stat-warnings").textContent = warnParties;
 }
 
 /* ================================================================
@@ -1808,9 +1803,6 @@ function renderAdmin() {
   const rulesSaveBtn = document.getElementById("rules-save");
   if (rulesSaveBtn) rulesSaveBtn.disabled = !canManageAdmin();
 
-  const resetPanel = document.getElementById("danger-zone-panel");
-  if (resetPanel) resetPanel.style.display = canManageAdmin() ? "" : "none";
-
   renderStaffPanel();
 }
 
@@ -1849,12 +1841,12 @@ function renderStaffPanel() {
 
   const roleSelect = document.getElementById("staff-role-select");
   roleSelect.innerHTML = canAssignCoLeader()
-    ? `<option>Co-Leader</option><option>Admin Staff</option>`
+    ? `<option>Co-Leader</option><option>Admin Staff</option><option>Developer</option>`
     : `<option>Admin Staff</option>`;
 
   noteWrap.textContent = canAssignCoLeader()
-    ? "As Guild Leader, you can assign both Co-Leader and Admin Staff roles."
-    : "As a Co-Leader, you can assign Admin Staff — only the Guild Leader can assign Co-Leaders.";
+    ? "As Guild Leader, you can assign Co-Leader, Admin Staff, or Developer roles."
+    : "As a Co-Leader, you can assign Admin Staff — only the Guild Leader can assign Co-Leaders or Developer.";
 }
 
 function addStaffMember() {
@@ -1872,8 +1864,8 @@ function addStaffMember() {
     return;
   }
   const role = roleSelect.value;
-  if (role === "Co-Leader" && !canAssignCoLeader()) {
-    toast("Only the Guild Leader can assign Co-Leaders.", "danger");
+  if ((role === "Co-Leader" || role === "Developer") && !canAssignCoLeader()) {
+    toast("Only the Guild Leader can assign Co-Leader or Developer roles.", "danger");
     return;
   }
   STAFF.add(name, email, role)
@@ -1899,41 +1891,175 @@ function saveRules() {
   toast("Composition rules updated — party warnings recalculated.", "success");
 }
 
-function loadSampleData() {
-  if (STORE.state.members.length > 0 && !confirm("This adds sample members/groups/events on top of what's already here. Continue?")) return;
-  const samples = [
-    ["Aeris", "Paladin", "Tank", 192, "Available"],
-    ["Vessahl", "Lord Knight", "Tank", 178, "Available"],
-    ["Lunael", "High Priest", "FS", 175, "Available"],
-    ["Cyrenne", "Priest", "FS", 168, "Available"],
-    ["Kael", "Sniper", "DPS", 205, "Available"],
-    ["Dorian", "Assassin Cross", "DPS", 199, "Available"],
-    ["Fennis", "Champion", "DPS", 184, "Unavailable"],
-    ["Ithra", "Whitesmith", "DPS", 172, "Available"],
-    ["Marewen", "Karnos", "DPS", 190, "Available"],
-    ["Talos", "Rebel", "DPS", 165, "Unavailable"],
-  ];
-  const g1 = { id: uid("grp"), name: "Night Shift Crew", memberIds: [] };
-  STORE.state.groups.push(g1);
-  samples.forEach(([name, cls, role, gear, avail], i) => {
+/* ================================================================
+   Developer Tools — hidden panel, gated by a code, not real security
+   (Firestore rules are the real protection). Just keeps casual staff
+   from stumbling into destructive/test-only actions.
+   ================================================================ */
+const DEV_CODE = "180603";
+
+const DEFAULT_SAMPLE_DATA = [
+  { name: "Aeris", className: "Paladin", role: "Tank", gear: 192, availability: "Available", grouped: true },
+  { name: "Vessahl", className: "Lord Knight", role: "Tank", gear: 178, availability: "Available", grouped: true },
+  { name: "Lunael", className: "High Priest", role: "FS", gear: 175, availability: "Available", grouped: true },
+  { name: "Cyrenne", className: "Priest", role: "FS", gear: 168, availability: "Available", grouped: true },
+  { name: "Kael", className: "Sniper", role: "DPS", gear: 205, availability: "Available", grouped: true },
+  { name: "Dorian", className: "Assassin Cross", role: "DPS", gear: 199, availability: "Available", grouped: false },
+  { name: "Fennis", className: "Champion", role: "DPS", gear: 184, availability: "Unavailable", grouped: false },
+  { name: "Ithra", className: "Whitesmith", role: "DPS", gear: 172, availability: "Available", grouped: false },
+  { name: "Marewen", className: "Karnos", role: "DPS", gear: 190, availability: "Available", grouped: false },
+  { name: "Talos", className: "Rebel", role: "DPS", gear: 165, availability: "Unavailable", grouped: false },
+];
+
+function openDevGate() {
+  if (!canAccessDevTools()) {
+    toast("Nothing here.", "danger");
+    return;
+  }
+  const input = document.getElementById("dev-gate-code");
+  if (input) input.value = "";
+  openModal("dev-gate-modal");
+}
+
+function submitDevGate() {
+  if (!canAccessDevTools()) return;
+  const input = document.getElementById("dev-gate-code");
+  if (input.value.trim() === DEV_CODE) {
+    closeModal("dev-gate-modal");
+    openDevTools();
+  } else {
+    toast("Incorrect code.", "danger");
+    input.value = "";
+  }
+}
+
+function openDevTools() {
+  const ta = document.getElementById("dev-sample-json");
+  if (ta && !ta.value.trim()) ta.value = JSON.stringify(DEFAULT_SAMPLE_DATA, null, 2);
+  populateDevThemeStaffSelect();
+  const resetInput = document.getElementById("dev-reset-confirm-input");
+  if (resetInput) resetInput.value = "";
+  const resetBtn = document.getElementById("dev-reset-confirm-btn");
+  if (resetBtn) resetBtn.disabled = true;
+  openModal("dev-tools-modal");
+}
+
+function loadDevSampleData() {
+  const ta = document.getElementById("dev-sample-json");
+  let parsed;
+  try {
+    parsed = JSON.parse(ta.value);
+  } catch (e) {
+    toast("That's not valid JSON: " + e.message, "danger");
+    return;
+  }
+  if (!Array.isArray(parsed)) {
+    toast("Expected a JSON array of member objects.", "danger");
+    return;
+  }
+  const g1 = { id: uid("grp"), name: "Night Shift Crew" };
+  const anyGrouped = parsed.some((m) => m.grouped);
+  if (anyGrouped) STORE.state.groups.push(g1);
+  parsed.forEach((m, i) => {
     STORE.state.members.push({
-      id: uid("mem"), name, className: cls, role, gear, availability: avail,
-      groupId: i < 5 ? g1.id : null, notes: "",
+      id: uid("mem"),
+      name: m.name || `Member ${i + 1}`,
+      className: m.className || "",
+      role: ROLE_ORDER.includes(m.role) ? m.role : "DPS",
+      gear: Number(m.gear) || 0,
+      availability: m.availability === "Unavailable" ? "Unavailable" : "Available",
+      groupId: m.grouped ? g1.id : null,
+      notes: "",
     });
   });
   STORE.save();
+  ACTIVITY.log("loaded test data via Developer Tools");
+  closeModal("dev-tools-modal");
   renderAll();
-  toast("Sample roster loaded.", "success");
+  toast(`Loaded ${parsed.length} test member${parsed.length === 1 ? "" : "s"}.`, "success");
 }
 
-function resetAllData() {
-  if (!canManageAdmin()) return;
-  if (confirm("This wipes all members, groups, teams and events on this device. Continue?")) {
-    STORE.state = defaultState();
-    STORE.save();
-    renderAll();
-    toast("All data reset.", "danger");
+function populateDevThemeStaffSelect() {
+  const sel = document.getElementById("dev-theme-staff-select");
+  if (!sel) return;
+  sel.innerHTML = STAFF.list
+    .map((s) => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.email || s.id)})</option>`)
+    .join("");
+}
+
+function applyDevStaffTheme() {
+  const email = document.getElementById("dev-theme-staff-select").value;
+  const theme = document.getElementById("dev-theme-select").value;
+  if (!email) {
+    toast("Pick a staff member first.", "danger");
+    return;
   }
+  db.collection("staff").doc(email).set({ theme }, { merge: true })
+    .then(() => {
+      ACTIVITY.log(`set ${email}'s theme to ${theme} via Developer Tools`);
+      toast(`Theme updated for ${email}.`, "success");
+    })
+    .catch((err) => toast("Couldn't update: " + err.message, "danger"));
+}
+
+function checkDevResetInput() {
+  const input = document.getElementById("dev-reset-confirm-input");
+  document.getElementById("dev-reset-confirm-btn").disabled = input.value.trim().toUpperCase() !== "RESET";
+}
+
+function confirmDevReset() {
+  const input = document.getElementById("dev-reset-confirm-input");
+  if (input.value.trim().toUpperCase() !== "RESET") return;
+  STORE.state = defaultState();
+  STORE.save();
+  ACTIVITY.log("reset all guild data via Developer Tools");
+  closeModal("dev-tools-modal");
+  renderAll();
+  toast("All data reset.", "danger");
+}
+
+/* ---------------- Guild logo ---------------- */
+const MAX_LOGO_BYTES = 150 * 1024;
+
+function renderBrand() {
+  const logoHtml = STORE.state.guildLogoUrl
+    ? `<img src="${STORE.state.guildLogoUrl}" alt="" style="height:20px; width:20px; object-fit:cover; border-radius:4px; vertical-align:middle;" />`
+    : "⌘";
+  document.querySelectorAll("#brand-logo").forEach((el) => { el.innerHTML = logoHtml; });
+  const preview = document.getElementById("logo-preview");
+  if (preview) {
+    preview.innerHTML = STORE.state.guildLogoUrl
+      ? `<img src="${STORE.state.guildLogoUrl}" style="width:100%; height:100%; object-fit:cover;" />`
+      : "⌘";
+  }
+}
+
+function handleLogoFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > MAX_LOGO_BYTES) {
+    toast("That image is too large — please use something under 150KB.", "danger");
+    e.target.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    STORE.state.guildLogoUrl = reader.result;
+    STORE.save();
+    ACTIVITY.log("updated the guild logo");
+    renderBrand();
+    toast("Logo updated.", "success");
+    e.target.value = "";
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeLogo() {
+  STORE.state.guildLogoUrl = null;
+  STORE.save();
+  ACTIVITY.log("removed the guild logo");
+  renderBrand();
+  toast("Logo removed — back to the default mark.", "success");
 }
 
 /* ================================================================
@@ -1953,6 +2079,7 @@ function renderAll() {
   const brand = document.getElementById("brand-guild-name");
   if (brand) brand.textContent = STORE.state.guildName;
   document.title = STORE.state.guildName + " — NightShiftPH Planner";
+  renderBrand();
   renderStats();
   renderInventory();
   renderGroups();
@@ -2004,12 +2131,14 @@ function handleSignUp() {
   auth.createUserWithEmailAndPassword(email, password).catch((err) => showAuthError(friendlyAuthError(err)));
 }
 
-/* ---------------- Theme picker ----------------
-   Purely a personal display preference, not shared guild data, so it
-   lives in localStorage (per browser/device) rather than Firestore.
-   Admin and public pages use separate keys so an admin's theme choice
-   never leaks onto the page regular members see, and vice versa. */
-const THEME_KEY = IS_PUBLIC ? "nsph_theme_public" : "nsph_theme_admin";
+/* ---------------- Theme ----------------
+   Public: self-service, stored in localStorage (per browser/device) —
+   purely a personal display preference, not shared guild data.
+   Admin: NOT self-service anymore — the Guild Leader assigns each
+   staff member's theme individually via Developer Tools, stored on
+   their staff record in Firestore. It's applied automatically once
+   their staff record is known, and re-applies live if changed while
+   they're signed in — see evaluateAccess(). */
 const ALLOWED_THEMES = IS_PUBLIC
   ? ["dark", "light"]
   : ["dark", "lighter-dark", "light", "pink", "cyan", "gold"];
@@ -2017,14 +2146,17 @@ const ALLOWED_THEMES = IS_PUBLIC
 function applyTheme(theme) {
   const safe = ALLOWED_THEMES.includes(theme) ? theme : "dark";
   document.body.dataset.theme = safe;
-  try { localStorage.setItem(THEME_KEY, safe); } catch (e) {}
-  const sel = document.getElementById("theme-select");
-  if (sel) sel.value = safe;
+  if (IS_PUBLIC) {
+    try { localStorage.setItem("nsph_theme_public", safe); } catch (e) {}
+    const sel = document.getElementById("theme-select");
+    if (sel) sel.value = safe;
+  }
 }
 
 function initTheme() {
+  if (!IS_PUBLIC) return; // admin theme is applied post-login from the staff record instead
   let saved = "dark";
-  try { saved = localStorage.getItem(THEME_KEY) || "dark"; } catch (e) {}
+  try { saved = localStorage.getItem("nsph_theme_public") || "dark"; } catch (e) {}
   applyTheme(saved);
   document.getElementById("theme-select")?.addEventListener("change", (e) => applyTheme(e.target.value));
 }
@@ -2090,9 +2222,21 @@ function init() {
   document.getElementById("attendance-auto-search")?.addEventListener("input", renderAttendanceList);
 
   document.getElementById("rules-save")?.addEventListener("click", saveRules);
-  document.getElementById("btn-reset-data")?.addEventListener("click", resetAllData);
-  document.getElementById("btn-load-sample")?.addEventListener("click", loadSampleData);
   document.getElementById("staff-add-btn")?.addEventListener("click", addStaffMember);
+
+  document.getElementById("logo-file-input")?.addEventListener("change", handleLogoFile);
+  document.getElementById("btn-remove-logo")?.addEventListener("click", removeLogo);
+
+  document.getElementById("btn-dev-gate")?.addEventListener("click", openDevGate);
+  document.getElementById("dev-gate-submit")?.addEventListener("click", submitDevGate);
+  document.getElementById("dev-gate-code")?.addEventListener("keydown", (e) => { if (e.key === "Enter") submitDevGate(); });
+  document.getElementById("dev-sample-load")?.addEventListener("click", loadDevSampleData);
+  document.getElementById("dev-sample-reset-default")?.addEventListener("click", () => {
+    document.getElementById("dev-sample-json").value = JSON.stringify(DEFAULT_SAMPLE_DATA, null, 2);
+  });
+  document.getElementById("dev-theme-apply")?.addEventListener("click", applyDevStaffTheme);
+  document.getElementById("dev-reset-confirm-input")?.addEventListener("input", checkDevResetInput);
+  document.getElementById("dev-reset-confirm-btn")?.addEventListener("click", confirmDevReset);
 
   document.getElementById("btn-queue-add")?.addEventListener("click", () => openQueueModal(null));
   document.getElementById("queue-modal-save")?.addEventListener("click", submitQueueEntry);

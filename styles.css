@@ -328,13 +328,24 @@ input::placeholder, textarea::placeholder { color: var(--text-faint); }
   .nav-item-disabled::after { left: 50%; top: calc(100% + 6px); transform: translateX(-50%); }
 }
 
-.sidebar-footer {
+.nav-admin-separator {
   margin-top: auto;
-  padding: 10px 12px;
-  font-size: 11px;
-  color: var(--text-faint);
+  padding-top: 10px;
   border-top: 1px solid var(--border-soft);
 }
+
+.dev-hidden-trigger {
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  font-size: 12px;
+  padding: 8px;
+  opacity: 0.12;
+  cursor: pointer;
+  transition: opacity .2s;
+  user-select: none;
+}
+.dev-hidden-trigger:hover { opacity: 0.4; }
 
 /* ---------- Main ---------- */
 .main {
@@ -946,6 +957,7 @@ table.roster-table tbody tr:last-child td { border-bottom: none; }
   .sidebar { flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--border-soft); padding: 8px; }
   .nav-item { flex-shrink: 0; }
   .sidebar-footer { display: none; }
+  .nav-admin-separator { display: none; }
   .builder-layout { grid-template-columns: 1fr; }
   .roster-pool { position: static; max-height: none; }
   .field-grid { grid-template-columns: 1fr; }
