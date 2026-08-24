@@ -27,13 +27,7 @@
       <span class="brand-mark"><span id="brand-logo">⌘</span> <span id="brand-guild-name">NightShiftPH</span></span>
     </div>
     <div class="topbar-right">
-      <div class="role-pill">
-        <select id="theme-select" title="Theme">
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-        </select>
-      </div>
-      <span class="mode-badge public">Public reference · read only</span>
+      <button id="theme-toggle-btn" class="theme-toggle-btn" title="Toggle light/dark">🌙</button>
     </div>
   </header>
 
@@ -45,10 +39,6 @@
   </nav>
 
   <main class="main">
-
-    <div class="public-banner">
-      <strong>You're viewing the public reference.</strong> Party lineups here reflect the latest saved changes from Guild Leadership and Admin Staff — check back before in-game assembly for last-minute swaps.
-    </div>
 
     <!-- ============ TEAM BUILDER (read-only) ============ -->
     <section id="view-builder" class="view active">
@@ -67,16 +57,7 @@
       <div class="team-tabs" id="team-tabs"></div>
       <div class="actions" id="team-toolbar" style="margin-bottom:14px; align-items:center;"></div>
 
-      <div class="builder-layout">
-        <aside class="roster-pool">
-          <h3>Roster pool</h3>
-          <div class="pool-hint">Reference only — ask an Admin to make changes.</div>
-          <input class="pool-search" id="pool-search" placeholder="Search members…" />
-          <div class="pool-list" id="pool-list"></div>
-        </aside>
-
-        <div class="party-grid" id="party-grid"></div>
-      </div>
+      <div class="party-grid" id="party-grid"></div>
     </section>
 
     <!-- ============ TIME ECHOES QUEUE ============ -->

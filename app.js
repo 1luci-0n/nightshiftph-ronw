@@ -27,6 +27,19 @@ const CLASS_GROUPS = [
   { base: "Druid", jobs: ["Karnos", "Alitea"] },
 ];
 
+/* Class → default Role Tag, applied automatically when a class is picked
+   (still fully editable afterward). Swordsman-branch defaults to Tank,
+   the supporting Acolyte jobs default to FS. The damage-focused Acolyte
+   jobs (Monk, Champion) are deliberately left out so they fall through
+   to the DPS default below, same as every other class. */
+const CLASS_TO_ROLE = {
+  "Knight": "Tank", "Crusader": "Tank", "Lord Knight": "Tank", "Paladin": "Tank",
+  "Priest": "FS", "High Priest": "FS",
+};
+function getAutoRoleForClass(className) {
+  return CLASS_TO_ROLE[className] || "DPS";
+}
+
 const DUNGEONS = [
   { id: "moonlight", name: "Moonlight Flower", icon: "🦊" },
   { id: "dracula", name: "Dracula", icon: "🦇" },
@@ -658,7 +671,6 @@ function openMemberModal(id) {
   document.getElementById("mf-name").value = m?.name || "";
   populateClassSelect(m?.className || "");
   document.getElementById("mf-role").value = m?.role || "DPS";
-  document.getElementById("mf-gear").value = m?.gear ?? "";
   document.getElementById("mf-availability").value = m?.availability || "Available";
   document.getElementById("mf-group").innerHTML =
     `<option value="">Unassigned</option>` +
@@ -677,6 +689,13 @@ function saveMemberForm() {
     toast("Give this member a name first.", "danger");
     return;
   }
+  const duplicate = STORE.state.members.some(
+    (x) => x.id !== editingMemberId && x.name.trim().toLowerCase() === name.toLowerCase()
+  );
+  if (duplicate) {
+    toast(`"${name}" is already registered — in-game names are unique, so this looks like a duplicate.`, "danger");
+    return;
+  }
   const targetGroupId = document.getElementById("mf-group").value || null;
   if (targetGroupId) {
     const count = STORE.state.members.filter((x) => x.groupId === targetGroupId && x.id !== editingMemberId).length;
@@ -689,7 +708,7 @@ function saveMemberForm() {
     name,
     className: document.getElementById("mf-class").value,
     role: document.getElementById("mf-role").value,
-    gear: Number(document.getElementById("mf-gear").value) || 0,
+    gear: editingMemberId ? (getMember(editingMemberId)?.gear ?? 0) : 0,
     availability: document.getElementById("mf-availability").value,
     groupId: targetGroupId,
     notes: document.getElementById("mf-notes").value.trim(),
@@ -721,13 +740,21 @@ function parseBulkPaste() {
     return;
   }
   const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+  const seenNames = new Set(STORE.state.members.map((m) => m.name.trim().toLowerCase()));
   let added = 0;
+  let skipped = 0;
   lines.forEach((line) => {
     const cols = line.split(/\t|,(?![^(]*\))/).map((c) => c.trim());
     const [name, className, role, gear, availability] = cols;
     if (!name) return;
+    const key = name.trim().toLowerCase();
+    if (seenNames.has(key)) {
+      skipped++;
+      return;
+    }
+    seenNames.add(key);
     const normRole = ROLE_ORDER.find((r) => r.toLowerCase() === (role || "").toLowerCase())
-      || ((role || "").toLowerCase() === "healer" ? "FS" : "DPS");
+      || (role ? ((role || "").toLowerCase() === "healer" ? "FS" : "DPS") : getAutoRoleForClass(className || ""));
     const normAvail = ["Available", "Unavailable"].find(
       (a) => a.toLowerCase() === (availability || "").toLowerCase()
     ) || "Available";
@@ -746,7 +773,9 @@ function parseBulkPaste() {
   STORE.save();
   closeModal("bulk-modal");
   renderAll();
-  toast(`Added ${added} member${added === 1 ? "" : "s"} from paste.`, "success");
+  let msg = `Added ${added} member${added === 1 ? "" : "s"} from paste.`;
+  if (skipped > 0) msg += ` Skipped ${skipped} duplicate name${skipped === 1 ? "" : "s"}.`;
+  toast(msg, skipped > 0 ? "danger" : "success");
 }
 
 /* ================================================================
@@ -2148,8 +2177,8 @@ function applyTheme(theme) {
   document.body.dataset.theme = safe;
   if (IS_PUBLIC) {
     try { localStorage.setItem("nsph_theme_public", safe); } catch (e) {}
-    const sel = document.getElementById("theme-select");
-    if (sel) sel.value = safe;
+    const btn = document.getElementById("theme-toggle-btn");
+    if (btn) btn.textContent = safe === "dark" ? "☀️" : "🌙";
   }
 }
 
@@ -2158,7 +2187,10 @@ function initTheme() {
   let saved = "dark";
   try { saved = localStorage.getItem("nsph_theme_public") || "dark"; } catch (e) {}
   applyTheme(saved);
-  document.getElementById("theme-select")?.addEventListener("change", (e) => applyTheme(e.target.value));
+  document.getElementById("theme-toggle-btn")?.addEventListener("click", () => {
+    const current = document.body.dataset.theme === "dark" ? "dark" : "light";
+    applyTheme(current === "dark" ? "light" : "dark");
+  });
 }
 
 /* ================================================================
@@ -2205,6 +2237,10 @@ function init() {
   document.getElementById("btn-bulk-paste")?.addEventListener("click", openBulkModal);
   document.getElementById("mf-save")?.addEventListener("click", saveMemberForm);
   document.getElementById("bulk-save")?.addEventListener("click", parseBulkPaste);
+  document.getElementById("mf-class")?.addEventListener("change", (e) => {
+    const roleSel = document.getElementById("mf-role");
+    if (roleSel) roleSel.value = getAutoRoleForClass(e.target.value);
+  });
 
   document.getElementById("btn-add-group")?.addEventListener("click", () => openGroupModal(null));
   document.getElementById("gf-save")?.addEventListener("click", saveGroupForm);

@@ -11,10 +11,14 @@
 //   public.html work without requiring members to log in.
 // - Only someone who is (a) logged in AND (b) has a document in the `staff`
 //   collection matching their email can WRITE roster changes.
-// - Only someone whose staff role is exactly "Guild Leader" can add, edit,
-//   or remove documents in the `staff` collection — meaning only the Guild
-//   Leader can grant or revoke anyone's access, enforced by the database
-//   itself, not just by the app's UI.
+// - Staff records: the Guild Leader can add/edit/remove anyone. A Co-Leader
+//   or Developer can add/remove Admin Staff, but cannot create or edit a
+//   Co-Leader or Developer record — only the Guild Leader can grant that
+//   level of access, enforced by the database itself, not just the app's UI.
+// - The Developer role has one extra, narrow permission: it can update the
+//   `theme` field on ANY staff record (and only that field) — this is what
+//   powers the "assign each staff member's theme" tool in Developer Tools.
+//   It cannot use this to change anyone's role or other details.
 // - `presence` (who's online) and `activity` (the recent-activity feed) are
 //   admin-only and read-restricted to staff — not shown on the public page.
 //   Activity entries can be created but never edited or deleted, since an
@@ -29,14 +33,33 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/staff/$(request.auth.token.email));
     }
 
+    function myRole() {
+      return get(/databases/$(database)/documents/staff/$(request.auth.token.email)).data.role;
+    }
+
     function isGuildLeader() {
-      return isStaff() &&
-        get(/databases/$(database)/documents/staff/$(request.auth.token.email)).data.role == "Guild Leader";
+      return isStaff() && myRole() == "Guild Leader";
+    }
+
+    function isDeveloper() {
+      return isStaff() && myRole() == "Developer";
+    }
+
+    function canAssignAdminStaff() {
+      return isStaff() && (myRole() == "Co-Leader" || myRole() == "Developer");
     }
 
     match /staff/{email} {
       allow read: if true;
-      allow write: if isGuildLeader();
+
+      allow create: if isGuildLeader()
+        || (canAssignAdminStaff() && request.resource.data.role == "Admin Staff");
+
+      allow update: if isGuildLeader()
+        || (canAssignAdminStaff() && request.resource.data.role == "Admin Staff")
+        || (isDeveloper() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["theme"]));
+
+      allow delete: if isGuildLeader() || canAssignAdminStaff();
     }
 
     match /guildState/{doc} {

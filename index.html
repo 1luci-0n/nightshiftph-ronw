@@ -316,7 +316,6 @@
         <label>Role tag</label>
         <select id="mf-role"><option>Tank</option><option value="FS">FS</option><option>DPS</option></select>
       </div>
-      <div class="field"><label>Gear rating</label><input id="mf-gear" type="number" min="0" placeholder="e.g. 185" /></div>
       <div class="field">
         <label>Availability</label>
         <select id="mf-availability"><option>Available</option><option>Unavailable</option></select>
@@ -478,7 +477,7 @@
 </div>
 
 <div class="modal-backdrop" id="dev-tools-modal">
-  <div class="modal" style="max-width:640px;">
+  <div class="modal" style="max-width:880px;">
     <div class="modal-header">
       <span class="modal-title">🛠 Developer Tools</span>
       <button class="modal-close" data-close-modal="dev-tools-modal">✕</button>
@@ -487,7 +486,7 @@
     <div class="panel" style="margin-bottom:14px;">
       <strong style="font-size:13px;">Sample data (editable)</strong>
       <div class="field-hint" style="margin-top:4px; margin-bottom:8px;">Edit the JSON below, then load it in as test data. This adds to whatever's already there — use Reset all data below first if you want a clean slate.</div>
-      <textarea id="dev-sample-json" style="min-height:220px; font-family:var(--font-mono); font-size:11px;"></textarea>
+      <textarea id="dev-sample-json" style="min-height:320px; font-family:var(--font-mono); font-size:12px;"></textarea>
       <div class="actions" style="margin-top:10px;">
         <button class="btn btn-ghost btn-sm" id="dev-sample-reset-default">Reset textarea to default</button>
         <button class="btn btn-primary btn-sm" id="dev-sample-load">Load into guild data</button>
