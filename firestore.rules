@@ -15,14 +15,15 @@
 //   or Developer can add/remove Admin Staff, but cannot create or edit a
 //   Co-Leader or Developer record — only the Guild Leader can grant that
 //   level of access, enforced by the database itself, not just the app's UI.
-// - The Developer role has one extra, narrow permission: it can update the
-//   `theme` field on ANY staff record (and only that field) — this is what
-//   powers the "assign each staff member's theme" tool in Developer Tools.
-//   It cannot use this to change anyone's role or other details.
 // - `presence` (who's online) and `activity` (the recent-activity feed) are
 //   admin-only and read-restricted to staff — not shown on the public page.
 //   Activity entries can be created but never edited or deleted, since an
 //   activity log that can be silently rewritten isn't worth much.
+// - `queue` (Time Echoes / dungeon-assist sign-ups) is the one place the
+//   public page needs to WRITE, not just read — anyone can create a new
+//   entry (self-registration, no account needed) and anyone can claim or
+//   unclaim an entry (offering to help), but only that one field. Only
+//   staff can edit an entry's details or fully resolve/delete it.
 
 rules_version = '2';
 service cloud.firestore {
@@ -41,10 +42,6 @@ service cloud.firestore {
       return isStaff() && myRole() == "Guild Leader";
     }
 
-    function isDeveloper() {
-      return isStaff() && myRole() == "Developer";
-    }
-
     function canAssignAdminStaff() {
       return isStaff() && (myRole() == "Co-Leader" || myRole() == "Developer");
     }
@@ -56,8 +53,7 @@ service cloud.firestore {
         || (canAssignAdminStaff() && request.resource.data.role == "Admin Staff");
 
       allow update: if isGuildLeader()
-        || (canAssignAdminStaff() && request.resource.data.role == "Admin Staff")
-        || (isDeveloper() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["theme"]));
+        || (canAssignAdminStaff() && request.resource.data.role == "Admin Staff");
 
       allow delete: if isGuildLeader() || canAssignAdminStaff();
     }
@@ -76,6 +72,14 @@ service cloud.firestore {
       allow read: if isStaff();
       allow create: if isStaff();
       allow update, delete: if false;
+    }
+
+    match /queue/{entryId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if isStaff()
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(["claimedByMemberId"]);
+      allow delete: if isStaff();
     }
   }
 }

@@ -103,12 +103,15 @@ const STORE = {
     }
     delete this.state.rules.Support;
     if (!this.state.events) this.state.events = [];
-    if (!this.state.queue) this.state.queue = [];
     delete this.state.staff; // staff now lives in its own Firestore collection, see STAFF below
     this.state.members.forEach((m) => {
       if (m.role === "Healer") m.role = "FS";
       if (!ROLE_ORDER.includes(m.role)) m.role = "DPS";
       if (m.availability === "Unsure") m.availability = "Available";
+      if (!m.groupIds) {
+        m.groupIds = m.groupId ? [m.groupId] : [];
+      }
+      delete m.groupId;
     });
     this.state.teams.forEach((t) => {
       t.parties.forEach((p) => {
@@ -169,6 +172,41 @@ const STAFF = {
   },
 };
 
+/* ---------------- Queue: its own Firestore collection ----------------
+   Kept separate from the big guildState document (unlike most other data)
+   specifically so members with no account can create and claim entries —
+   the security rules allow public create/claim, but only staff can edit
+   or fully resolve an entry. This is what actually makes the public
+   "sign up to help" feature work at all. */
+const QUEUE = {
+  list: [],
+  ready: false,
+
+  listen(cb) {
+    db.collection("queue").onSnapshot(
+      (snap) => {
+        this.list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        this.ready = true;
+        if (cb) cb();
+        renderQueue();
+      },
+      (err) => toast("Queue sync error: " + err.message, "danger")
+    );
+  },
+
+  add(entry) {
+    return db.collection("queue").add(entry);
+  },
+
+  update(id, data) {
+    return db.collection("queue").doc(id).set(data, { merge: true });
+  },
+
+  remove(id) {
+    return db.collection("queue").doc(id).delete();
+  },
+};
+
 /* ---------------- Presence: who's online right now ----------------
    Firestore has no built-in presence system (that's a Realtime Database
    feature), so this approximates it with a heartbeat: every signed-in
@@ -226,21 +264,25 @@ function renderPresence() {
   wrap.innerHTML = `<span class="presence-dot"></span> ${names.join(", ")} online`;
 }
 
-/* ---------------- Recent activity: lightweight, admin-only feed ----------------
-   This is intentionally lightweight — only the handful of meaningful actions
-   below are logged, not every drag or slot change. The full, detailed audit
-   log (every action, filterable, exportable) is a separate future feature
-   that will live alongside this same panel in the Admin tab. */
+/* ---------------- Audit Log: on-demand, grouped by day ----------------
+   Only the handful of meaningful actions below are logged, not every
+   drag or slot change — that would be noise, not signal. The listener
+   only starts once the modal is opened (not always-on), and entries
+   are write-once at the database level: nobody can edit or delete a
+   log entry after the fact. A future version may add PDF export. */
 const ACTIVITY = {
   list: [],
+  listening: false,
 
   listen() {
-    db.collection("activity").orderBy("timestamp", "desc").limit(15).onSnapshot(
+    if (this.listening) return;
+    this.listening = true;
+    db.collection("activity").orderBy("timestamp", "desc").limit(100).onSnapshot(
       (snap) => {
         this.list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        renderActivityFeed();
+        renderAuditLog();
       },
-      (err) => toast("Activity feed error: " + err.message, "danger")
+      (err) => toast("Audit log error: " + err.message, "danger")
     );
   },
 
@@ -255,30 +297,60 @@ const ACTIVITY = {
   },
 };
 
-function timeAgo(date) {
-  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (diff < 10) return "just now";
-  if (diff < 60) return diff + "s ago";
-  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
-  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
-  return Math.floor(diff / 86400) + "d ago";
+function timeOfDay(date) {
+  return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-function renderActivityFeed() {
-  const wrap = document.getElementById("activity-feed-list");
+function dayLabel(date) {
+  const now = new Date();
+  const isSameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (isSameDay(date, now)) return "Today";
+  if (isSameDay(date, yesterday)) return "Yesterday";
+  return date.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+}
+
+function openAuditLog() {
+  ACTIVITY.listen();
+  renderAuditLog();
+  openModal("audit-log-modal");
+}
+
+function renderAuditLog() {
+  const wrap = document.getElementById("audit-log-list");
   if (!wrap) return;
   if (!ACTIVITY.list.length) {
-    wrap.innerHTML = `<div style="color:var(--text-faint); font-size:11.5px; padding:6px 0;">No activity yet.</div>`;
+    wrap.innerHTML = `<div style="color:var(--text-faint); font-size:11.5px; padding:16px 4px;">No activity logged yet.</div>`;
     return;
   }
-  wrap.innerHTML = ACTIVITY.list
-    .map((a) => {
-      const when = a.timestamp && a.timestamp.toDate ? timeAgo(a.timestamp.toDate()) : "just now";
-      return `<div style="display:flex; gap:8px; padding:6px 0; border-bottom:1px solid var(--border-soft); font-size:12px;">
-        <span style="color:var(--text-faint); font-family:var(--font-mono); font-size:10.5px; min-width:52px; flex-shrink:0;">${when}</span>
-        <span><strong>${escapeHtml(a.actorName || "Someone")}</strong> ${escapeHtml(a.message || "")}</span>
-      </div>`;
-    })
+
+  const groups = [];
+  let currentLabel = null;
+  ACTIVITY.list.forEach((a) => {
+    const date = a.timestamp && a.timestamp.toDate ? a.timestamp.toDate() : new Date();
+    const label = dayLabel(date);
+    if (label !== currentLabel) {
+      groups.push({ label, entries: [] });
+      currentLabel = label;
+    }
+    groups[groups.length - 1].entries.push({ ...a, _date: date });
+  });
+
+  wrap.innerHTML = groups
+    .map(
+      (g) => `<div style="margin-bottom:16px;">
+        <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-faint); padding:8px 4px 6px; position:sticky; top:0; background:var(--panel);">${escapeHtml(g.label)}</div>
+        ${g.entries
+          .map(
+            (a) => `<div style="display:flex; gap:8px; padding:6px 4px; border-bottom:1px solid var(--border-soft); font-size:12px;">
+              <span style="color:var(--text-faint); font-family:var(--font-mono); font-size:10.5px; min-width:56px; flex-shrink:0;">${timeOfDay(a._date)}</span>
+              <span><strong>${escapeHtml(a.actorName || "Someone")}</strong> ${escapeHtml(a.message || "")}</span>
+            </div>`
+          )
+          .join("")}
+      </div>`
+    )
     .join("");
 }
 
@@ -314,7 +386,6 @@ function defaultState() {
     events: [
       { id: uid("evt"), name: "Guild League — Week 1", date: todayStr(), teamIds: [], participants: [] },
     ],
-    queue: [],
   };
 }
 
@@ -328,6 +399,15 @@ function getMember(id) {
 }
 function getGroup(id) {
   return STORE.state.groups.find((g) => g.id === id) || null;
+}
+function memberInGroup(m, groupId) {
+  return !!m.groupIds && m.groupIds.includes(groupId);
+}
+function getGroupsForMember(m) {
+  return (m.groupIds || []).map((id) => getGroup(id)).filter(Boolean);
+}
+function membersInGroup(groupId) {
+  return STORE.state.members.filter((m) => memberInGroup(m, groupId));
 }
 function getTeam(id) {
   return STORE.state.teams.find((t) => t.id === id) || null;
@@ -454,11 +534,9 @@ function evaluateAccess() {
   pendingScreen.style.display = "none";
   appShell.style.display = "";
   updateAuthUI();
-  applyTheme(currentStaffRecord.theme || "dark");
   if (!collaborationStarted) {
     collaborationStarted = true;
     PRESENCE.start();
-    ACTIVITY.listen();
   }
   renderAll();
 }
@@ -518,8 +596,8 @@ function getFilteredSortedMembers() {
 
   if (invFilters.role) members = members.filter((m) => m.role === invFilters.role);
   if (invFilters.availability) members = members.filter((m) => m.availability === invFilters.availability);
-  if (invFilters.group === "__unassigned__") members = members.filter((m) => !m.groupId);
-  else if (invFilters.group) members = members.filter((m) => m.groupId === invFilters.group);
+  if (invFilters.group === "__unassigned__") members = members.filter((m) => !m.groupIds || m.groupIds.length === 0);
+  else if (invFilters.group) members = members.filter((m) => memberInGroup(m, invFilters.group));
 
   const q = (document.getElementById("inv-search")?.value || "").toLowerCase();
   if (q) members = members.filter((m) => m.name.toLowerCase().includes(q));
@@ -528,8 +606,8 @@ function getFilteredSortedMembers() {
   members.sort((a, b) => {
     let av, bv;
     if (key === "group") {
-      av = getGroup(a.groupId)?.name || "";
-      bv = getGroup(b.groupId)?.name || "";
+      av = getGroupsForMember(a).map((g) => g.name).join(", ");
+      bv = getGroupsForMember(b).map((g) => g.name).join(", ");
     } else {
       av = a[key];
       bv = b[key];
@@ -589,7 +667,7 @@ function renderInventory() {
   const members = getFilteredSortedMembers();
 
   if (members.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state">
       <div class="es-title">No members match</div>
       Add a member, paste a roster in bulk, or clear your filters.
     </div></td></tr>`;
@@ -598,14 +676,13 @@ function renderInventory() {
 
   tbody.innerHTML = members
     .map((m) => {
-      const group = getGroup(m.groupId);
+      const groups = getGroupsForMember(m);
       return `<tr>
         <td>${escapeHtml(m.name)}</td>
         <td>${escapeHtml(m.className || "—")}</td>
         <td><span class="role-chip role-${m.role}" style="color:${ROLE_COLOR[m.role]}">${m.role}</span></td>
-        <td class="gear-num">${m.gear ?? "—"}</td>
         <td><span class="avail-dot avail-${m.availability}"></span>${m.availability}</td>
-        <td>${group ? escapeHtml(group.name) : "<span style='color:var(--text-faint)'>Unassigned</span>"}</td>
+        <td>${groups.length ? groups.map((g) => escapeHtml(g.name)).join(", ") : "<span style='color:var(--text-faint)'>Unassigned</span>"}</td>
         <td>
           ${canEdit() ? `<button class="btn btn-sm btn-ghost" data-edit-member="${m.id}">Edit</button>
           <button class="btn btn-sm btn-danger" data-del-member="${m.id}">Remove</button>` : ""}
@@ -672,14 +749,6 @@ function openMemberModal(id) {
   populateClassSelect(m?.className || "");
   document.getElementById("mf-role").value = m?.role || "DPS";
   document.getElementById("mf-availability").value = m?.availability || "Available";
-  document.getElementById("mf-group").innerHTML =
-    `<option value="">Unassigned</option>` +
-    STORE.state.groups.map((g) => {
-      const count = STORE.state.members.filter((x) => x.groupId === g.id).length;
-      const full = count >= MAX_GROUP_SIZE && m?.groupId !== g.id;
-      return `<option value="${g.id}" ${m?.groupId === g.id ? "selected" : ""} ${full ? "disabled" : ""}>${escapeHtml(g.name)} (${count}/${MAX_GROUP_SIZE}${full ? " — full" : ""})</option>`;
-    }).join("");
-  document.getElementById("mf-notes").value = m?.notes || "";
   openModal("member-modal");
 }
 
@@ -696,22 +765,14 @@ function saveMemberForm() {
     toast(`"${name}" is already registered — in-game names are unique, so this looks like a duplicate.`, "danger");
     return;
   }
-  const targetGroupId = document.getElementById("mf-group").value || null;
-  if (targetGroupId) {
-    const count = STORE.state.members.filter((x) => x.groupId === targetGroupId && x.id !== editingMemberId).length;
-    if (count >= MAX_GROUP_SIZE) {
-      toast("That group is already full (5/5).", "danger");
-      return;
-    }
-  }
   const data = {
     name,
     className: document.getElementById("mf-class").value,
     role: document.getElementById("mf-role").value,
     gear: editingMemberId ? (getMember(editingMemberId)?.gear ?? 0) : 0,
     availability: document.getElementById("mf-availability").value,
-    groupId: targetGroupId,
-    notes: document.getElementById("mf-notes").value.trim(),
+    groupIds: editingMemberId ? (getMember(editingMemberId)?.groupIds ?? []) : [],
+    notes: editingMemberId ? (getMember(editingMemberId)?.notes ?? "") : "",
   };
   if (editingMemberId) {
     Object.assign(getMember(editingMemberId), data);
@@ -794,7 +855,7 @@ function renderGroups() {
   }
   wrap.innerHTML = groups
     .map((g) => {
-      const members = STORE.state.members.filter((m) => m.groupId === g.id);
+      const members = membersInGroup(g.id);
       return `<div class="group-card">
         <div class="group-card-head">
           <div>
@@ -816,11 +877,11 @@ function renderGroups() {
 
   wrap.querySelectorAll("[data-del-group]").forEach((btn) =>
     btn.addEventListener("click", () => {
-      if (confirm("Delete this group? Members stay on the roster but become unassigned.")) {
+      if (confirm("Delete this group? Members stay on the roster but this Bond is removed from them.")) {
         const gid = btn.dataset.delGroup;
         const gname = getGroup(gid)?.name || "unknown";
         STORE.state.groups = STORE.state.groups.filter((g) => g.id !== gid);
-        STORE.state.members.forEach((m) => { if (m.groupId === gid) m.groupId = null; });
+        STORE.state.members.forEach((m) => { m.groupIds = (m.groupIds || []).filter((id) => id !== gid); });
         STORE.save();
         ACTIVITY.log(`deleted Bond "${gname}"`);
         renderAll();
@@ -841,7 +902,7 @@ function openGroupModal(id) {
   document.getElementById("group-modal-title").textContent = g ? "Edit group" : "New group";
   document.getElementById("gf-name").value = g?.name || "";
   document.getElementById("gf-member-search").value = "";
-  gfSelectedIds = new Set(STORE.state.members.filter((m) => g && m.groupId === g.id).map((m) => m.id));
+  gfSelectedIds = new Set(g ? membersInGroup(g.id).map((m) => m.id) : []);
   renderGroupMemberChecklist();
   openModal("group-modal");
 }
@@ -865,12 +926,12 @@ function renderGroupMemberChecklist() {
 
   wrap.innerHTML = members
     .map((m) => {
-      const otherGroup = !!m.groupId && m.groupId !== editingGroupId;
-      const otherName = otherGroup ? getGroup(m.groupId)?.name : null;
+      const otherGroups = getGroupsForMember(m).filter((g2) => g2.id !== editingGroupId);
+      const otherNames = otherGroups.map((g2) => g2.name).join(", ");
       return `<label style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:12px;">
-        <input type="checkbox" data-gm="${m.id}" data-other-group="${otherGroup ? "1" : "0"}" ${gfSelectedIds.has(m.id) ? "checked" : ""} />
+        <input type="checkbox" data-gm="${m.id}" ${gfSelectedIds.has(m.id) ? "checked" : ""} />
         ${escapeHtml(m.name)}
-        ${otherName ? `<span style="color:var(--text-faint); font-size:10.5px;">(in ${escapeHtml(otherName)})</span>` : ""}
+        ${otherNames ? `<span style="color:var(--text-faint); font-size:10.5px;">(also in: ${escapeHtml(otherNames)})</span>` : ""}
       </label>`;
     })
     .join("");
@@ -888,10 +949,6 @@ function renderGroupMemberChecklist() {
 function updateGroupChecklistState() {
   const boxes = Array.from(document.querySelectorAll("#gf-members [data-gm]"));
   boxes.forEach((cb) => {
-    if (cb.dataset.otherGroup === "1") {
-      cb.disabled = true;
-      return;
-    }
     cb.disabled = !gfSelectedIds.has(cb.dataset.gm) && gfSelectedIds.size >= MAX_GROUP_SIZE;
   });
   const counter = document.getElementById("gf-member-count");
@@ -919,8 +976,10 @@ function saveGroupForm() {
   }
 
   STORE.state.members.forEach((m) => {
-    if (gfSelectedIds.has(m.id)) m.groupId = group.id;
-    else if (m.groupId === group.id) m.groupId = null;
+    if (!m.groupIds) m.groupIds = [];
+    const has = m.groupIds.includes(group.id);
+    if (gfSelectedIds.has(m.id) && !has) m.groupIds.push(group.id);
+    else if (!gfSelectedIds.has(m.id) && has) m.groupIds = m.groupIds.filter((id) => id !== group.id);
   });
 
   STORE.save();
@@ -1273,7 +1332,7 @@ function handleGroupDropOnParty(team, partyId, groupId) {
   const group = getGroup(groupId);
   if (!party || !group) return;
 
-  const groupMembers = STORE.state.members.filter((m) => m.groupId === groupId);
+  const groupMembers = membersInGroup(groupId);
   const alreadySlotted = slottedIdsGlobally();
   const placeable = groupMembers.filter((m) => !alreadySlotted.has(m.id));
   const skippedElsewhere = groupMembers.length - placeable.length;
@@ -1303,38 +1362,37 @@ function handleGroupDropOnParty(team, partyId, groupId) {
 function suggestForSlot(team, partyId, idx) {
   const party = team.parties.find((p) => p.id === partyId);
 
-  // Suggest respects two closed pools and never lets them mix:
-  //  - If this party already has a group started, it only completes THAT group.
-  //  - If this party has no group in it (empty, or only ungrouped individuals so far),
-  //    it only offers other ungrouped individuals — never pulls in someone from any group.
-  // If the party's filled slots already show MORE than one context (a manual override
-  // already mixed a group with individuals, or two groups), Suggest refuses outright —
-  // it can't safely guess further once a deliberate manual mix has already happened.
-  const filledContexts = new Set(
-    party.slots.filter(Boolean).map((mid) => getMember(mid)?.groupId || "__individual__")
-  );
+  // Suggest builds a "context" from every Bond represented among the party's
+  // filled slots (a member can belong to more than one Bond, so this is a
+  // union, not a single value). It then only offers members who share AT
+  // LEAST ONE Bond with that context — this naturally lets someone who
+  // bridges two Bonds get suggested for either, without ever pulling in a
+  // totally unrelated Bond or individual. If the party has no Bond context
+  // yet (empty, or only ungrouped individuals so far), it only offers other
+  // ungrouped individuals — never pulls in someone from any Bond.
+  const contextGroupIds = new Set();
+  party.slots.filter(Boolean).forEach((mid) => {
+    const gm = getMember(mid);
+    if (!gm) return;
+    (gm.groupIds || []).forEach((gid) => contextGroupIds.add(gid));
+  });
 
-  if (filledContexts.size > 1) {
-    toast("This party's lineup is already a manual mix of groups/individuals — Suggest can't safely continue here. Place the remaining slots by hand.", "danger");
-    return;
-  }
-
-  const isGroupContext = filledContexts.size === 1 && !filledContexts.has("__individual__");
-  const contextGroupId = isGroupContext ? [...filledContexts][0] : null;
+  const isGroupContext = contextGroupIds.size > 0;
   const alreadySlottedIds = slottedIdsGlobally();
 
   let pool = isGroupContext
     ? STORE.state.members.filter(
-        (m) => m.availability === "Available" && !alreadySlottedIds.has(m.id) && m.groupId === contextGroupId
+        (m) => m.availability === "Available" && !alreadySlottedIds.has(m.id) &&
+          (m.groupIds || []).some((gid) => contextGroupIds.has(gid))
       )
     : STORE.state.members.filter(
-        (m) => m.availability === "Available" && !alreadySlottedIds.has(m.id) && !m.groupId
+        (m) => m.availability === "Available" && !alreadySlottedIds.has(m.id) && (!m.groupIds || m.groupIds.length === 0)
       );
 
   if (pool.length === 0) {
     toast(
       isGroupContext
-        ? "No remaining groupmates available for this party — place a stand-in manually if needed."
+        ? "No remaining Bond-mates available for this party — place a stand-in manually if needed."
         : "No available individual (ungrouped) members left to suggest — drag in a group, or place someone manually.",
       "danger"
     );
@@ -1347,7 +1405,7 @@ function suggestForSlot(team, partyId, idx) {
     const roleMatch = pool.filter((m) => m.role === neededRole);
     if (roleMatch.length === 0) {
       toast(
-        `No ${isGroupContext ? "groupmate" : "available individual"} can fill the missing ${neededRole} role here — place someone manually if you want to relax this.`,
+        `No ${isGroupContext ? "Bond-mate" : "available individual"} can fill the missing ${neededRole} role here — place someone manually if you want to relax this.`,
         "danger"
       );
       return;
@@ -1366,6 +1424,25 @@ function suggestForSlot(team, partyId, idx) {
 }
 
 /* ---------------- Roster pool (drag source: individual members + whole groups) ---------------- */
+let poolSortMode = "gear"; // "gear" | "random"
+let poolRandomOrder = [];
+
+function shuffleRosterPool() {
+  const ids = STORE.state.members.map((m) => m.id);
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  poolRandomOrder = ids;
+  poolSortMode = "random";
+  renderRosterPool();
+}
+
+function unshuffleRosterPool() {
+  poolSortMode = "gear";
+  renderRosterPool();
+}
+
 function renderRosterPool() {
   const wrap = document.getElementById("pool-list");
   if (!wrap) return;
@@ -1376,7 +1453,7 @@ function renderRosterPool() {
     ? `<div class="pool-section-label">Groups — drag onto a party</div>` +
       STORE.state.groups
         .map((g) => {
-          const groupMembers = STORE.state.members.filter((m) => m.groupId === g.id);
+          const groupMembers = membersInGroup(g.id);
           const fullySlotted = groupMembers.length > 0 && groupMembers.every((m) => globallySlotted.has(m.id));
           return `<div class="pool-chip pool-group-chip ${fullySlotted ? "slotted" : ""}" draggable="${canEdit() && !fullySlotted}" data-pool-group="${g.id}">
             <span class="rd" style="background:var(--gold)"></span>
@@ -1387,9 +1464,12 @@ function renderRosterPool() {
         .join("")
     : "";
 
-  const members = STORE.state.members
-    .filter((m) => m.name.toLowerCase().includes(q))
-    .sort((a, b) => b.gear - a.gear);
+  let members = STORE.state.members.filter((m) => m.name.toLowerCase().includes(q));
+  if (poolSortMode === "random" && poolRandomOrder.length) {
+    members.sort((a, b) => poolRandomOrder.indexOf(a.id) - poolRandomOrder.indexOf(b.id));
+  } else {
+    members.sort((a, b) => b.gear - a.gear);
+  }
 
   const membersHtml = members.length
     ? `<div class="pool-section-label">Members</div>` +
@@ -1650,7 +1730,7 @@ function getSelectedDungeons() {
 
 function openQueueModal(id) {
   editingQueueId = id || null;
-  const q = id ? STORE.state.queue.find((x) => x.id === id) : null;
+  const q = id ? QUEUE.list.find((x) => x.id === id) : null;
   const title = document.getElementById("queue-modal-title");
   if (title) title.textContent = q ? "Edit queue entry" : "Register for queue";
   const nameInput = document.getElementById("queue-name-input");
@@ -1677,69 +1757,82 @@ function submitQueueEntry() {
     return;
   }
 
-  if (editingQueueId) {
-    const entry = STORE.state.queue.find((q) => q.id === editingQueueId);
-    entry.memberId = member.id;
-    entry.dungeons = dungeons;
-    toast("Queue entry updated.", "success");
-  } else {
-    STORE.state.queue.push({
-      id: uid("q"),
-      memberId: member.id,
-      dungeons,
-      claimedBy: null,
-      createdAt: Date.now(),
-    });
-    ACTIVITY.log(`added "${member.name}" to the queue`);
-    toast(`${member.name} added to the queue.`, "success");
-  }
-  STORE.save();
-  editingQueueId = null;
-  nameInput.value = "";
-  resetDungeonChecklist([]);
-  closeModal("queue-modal");
-  renderQueue();
+  const action = editingQueueId
+    ? QUEUE.update(editingQueueId, { memberId: member.id, dungeons })
+    : QUEUE.add({ memberId: member.id, dungeons, claimedByMemberId: null, createdAt: Date.now() });
+
+  action
+    .then(() => {
+      if (editingQueueId) {
+        toast("Queue entry updated.", "success");
+      } else {
+        ACTIVITY.log(`added "${member.name}" to the queue`);
+        toast(`${member.name} added to the queue.`, "success");
+      }
+      editingQueueId = null;
+      nameInput.value = "";
+      resetDungeonChecklist([]);
+      closeModal("queue-modal");
+    })
+    .catch((err) => toast("Couldn't save: " + err.message, "danger"));
 }
 
-function toggleClaim(id) {
-  const q = STORE.state.queue.find((x) => x.id === id);
-  if (!q) return;
-  if (q.claimedBy) {
-    q.claimedBy = null;
-    STORE.save();
-    renderQueue();
-    toast("Unclaimed.", "success");
+let pendingClaimEntryId = null;
+
+function openClaimModal(id) {
+  pendingClaimEntryId = id;
+  const input = document.getElementById("claim-name-input");
+  if (input) input.value = "";
+  openModal("claim-modal");
+}
+
+function submitClaim() {
+  const input = document.getElementById("claim-name-input");
+  const name = input.value.trim();
+  if (!name) {
+    toast("Enter your in-game name first.", "danger");
     return;
   }
-  const name = prompt("Who is helping this member? (your in-game name)");
-  if (name === null) return;
-  q.claimedBy = name.trim() || null;
-  STORE.save();
-  renderQueue();
-  if (q.claimedBy) toast(`Claimed — ${q.claimedBy} is now helping.`, "success");
+  const member = findMemberByName(name);
+  if (!member) {
+    toast("No member found with that exact name — pick one from the suggestions, or ask an admin to add you to Members first.", "danger");
+    return;
+  }
+  QUEUE.update(pendingClaimEntryId, { claimedByMemberId: member.id })
+    .then(() => {
+      closeModal("claim-modal");
+      toast(`Claimed — ${member.name} is now helping.`, "success");
+    })
+    .catch((err) => toast("Couldn't claim: " + err.message, "danger"));
+}
+
+function unclaimEntry(id) {
+  QUEUE.update(id, { claimedByMemberId: null })
+    .then(() => toast("Unclaimed.", "success"))
+    .catch((err) => toast("Couldn't unclaim: " + err.message, "danger"));
 }
 
 function markQueueHelped(id) {
   if (!confirm("Mark this member as helped and remove them from the queue?")) return;
-  const q = STORE.state.queue.find((x) => x.id === id);
+  const q = QUEUE.list.find((x) => x.id === id);
   const m = q ? getMember(q.memberId) : null;
-  STORE.state.queue = STORE.state.queue.filter((q) => q.id !== id);
-  STORE.save();
-  ACTIVITY.log(`marked "${m?.name || "someone"}" as helped in the queue`);
-  renderQueue();
-  toast("Marked as helped — removed from queue.", "success");
+  QUEUE.remove(id)
+    .then(() => {
+      ACTIVITY.log(`marked "${m?.name || "someone"}" as helped in the queue`);
+      toast("Marked as helped — removed from queue.", "success");
+    })
+    .catch((err) => toast("Couldn't update: " + err.message, "danger"));
 }
 
 function removeQueueEntry(id) {
   if (!confirm("Remove this entry from the queue?")) return;
-  STORE.state.queue = STORE.state.queue.filter((q) => q.id !== id);
-  STORE.save();
-  renderQueue();
-  toast("Entry removed.", "danger");
+  QUEUE.remove(id)
+    .then(() => toast("Entry removed.", "danger"))
+    .catch((err) => toast("Couldn't remove: " + err.message, "danger"));
 }
 
 function renderQueueList() {
-  const queue = STORE.state.queue.slice().sort((a, b) => a.createdAt - b.createdAt);
+  const queue = QUEUE.list.slice().sort((a, b) => a.createdAt - b.createdAt);
 
   const pubWrap = document.getElementById("queue-public-list");
   if (pubWrap) {
@@ -1749,9 +1842,14 @@ function renderQueueList() {
             const m = getMember(q.memberId);
             if (!m) return "";
             const icons = q.dungeons.map((id) => dungeonById(id)?.icon || "").join(" ");
-            const statusHtml = q.claimedBy
-              ? `<span class="queue-status claimed">Being helped by ${escapeHtml(q.claimedBy)}</span>`
-              : `<span class="queue-status waiting">Waiting</span>`;
+            const helper = q.claimedByMemberId ? getMember(q.claimedByMemberId) : null;
+            const statusHtml = helper
+              ? `<span class="queue-status claimed">Being helped by ${escapeHtml(helper.name)}
+                  <button class="btn btn-sm btn-ghost" data-queue-unclaim="${q.id}" style="margin-left:6px; padding:1px 6px; font-size:10px;">Unclaim</button>
+                 </span>`
+              : `<span class="queue-status waiting">Waiting
+                  <button class="btn btn-sm btn-ghost" data-queue-claim="${q.id}" style="margin-left:6px; padding:1px 6px; font-size:10px;">I'll help</button>
+                 </span>`;
             return `<div class="queue-row">
               <span class="queue-pos">#${i + 1}</span>
               <span class="queue-name">${escapeHtml(m.name)}</span>
@@ -1761,6 +1859,12 @@ function renderQueueList() {
           })
           .join("")
       : `<div class="empty-state"><div class="es-title">Queue is empty</div>Nobody's waiting for a hand right now — nice work, guild!</div>`;
+    pubWrap.querySelectorAll("[data-queue-claim]").forEach((btn) =>
+      btn.addEventListener("click", () => openClaimModal(btn.dataset.queueClaim))
+    );
+    pubWrap.querySelectorAll("[data-queue-unclaim]").forEach((btn) =>
+      btn.addEventListener("click", () => unclaimEntry(btn.dataset.queueUnclaim))
+    );
   }
 
   const adminWrap = document.getElementById("queue-admin-list");
@@ -1771,6 +1875,7 @@ function renderQueueList() {
       adminWrap.innerHTML = queue
         .map((q, i) => {
           const m = getMember(q.memberId);
+          const helper = q.claimedByMemberId ? getMember(q.claimedByMemberId) : null;
           const icons = q.dungeons
             .map((id) => `<span title="${dungeonById(id)?.name}">${dungeonById(id)?.icon}</span>`)
             .join(" ");
@@ -1778,10 +1883,10 @@ function renderQueueList() {
             <span class="queue-pos">#${i + 1}</span>
             <span class="queue-name">${m ? escapeHtml(m.name) : "Unknown member"}</span>
             <span class="queue-icons">${icons}</span>
-            <span class="queue-claim">${q.claimedBy ? `Helped by ${escapeHtml(q.claimedBy)}` : "Unclaimed"}</span>
+            <span class="queue-claim">${helper ? `Helped by ${escapeHtml(helper.name)}` : "Unclaimed"}</span>
             ${
               canEdit()
-                ? `<button class="btn btn-sm btn-ghost" data-queue-claim="${q.id}">${q.claimedBy ? "Unclaim" : "Claim"}</button>
+                ? `<button class="btn btn-sm btn-ghost" data-queue-claim-toggle="${q.id}">${helper ? "Unclaim" : "Claim"}</button>
                    <button class="btn btn-sm btn-ghost" data-queue-edit="${q.id}">Edit</button>
                    <button class="btn btn-sm btn-primary" data-queue-helped="${q.id}">Mark helped</button>
                    <button class="btn btn-sm btn-danger" data-queue-remove="${q.id}">Remove</button>`
@@ -1790,8 +1895,12 @@ function renderQueueList() {
           </div>`;
         })
         .join("");
-      adminWrap.querySelectorAll("[data-queue-claim]").forEach((btn) =>
-        btn.addEventListener("click", () => toggleClaim(btn.dataset.queueClaim))
+      adminWrap.querySelectorAll("[data-queue-claim-toggle]").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          const q = QUEUE.list.find((x) => x.id === btn.dataset.queueClaimToggle);
+          if (q?.claimedByMemberId) unclaimEntry(q.id);
+          else openClaimModal(btn.dataset.queueClaimToggle);
+        })
       );
       adminWrap.querySelectorAll("[data-queue-edit]").forEach((btn) =>
         btn.addEventListener("click", () => openQueueModal(btn.dataset.queueEdit))
@@ -1965,7 +2074,6 @@ function submitDevGate() {
 function openDevTools() {
   const ta = document.getElementById("dev-sample-json");
   if (ta && !ta.value.trim()) ta.value = JSON.stringify(DEFAULT_SAMPLE_DATA, null, 2);
-  populateDevThemeStaffSelect();
   const resetInput = document.getElementById("dev-reset-confirm-input");
   if (resetInput) resetInput.value = "";
   const resetBtn = document.getElementById("dev-reset-confirm-btn");
@@ -2006,29 +2114,6 @@ function loadDevSampleData() {
   closeModal("dev-tools-modal");
   renderAll();
   toast(`Loaded ${parsed.length} test member${parsed.length === 1 ? "" : "s"}.`, "success");
-}
-
-function populateDevThemeStaffSelect() {
-  const sel = document.getElementById("dev-theme-staff-select");
-  if (!sel) return;
-  sel.innerHTML = STAFF.list
-    .map((s) => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.email || s.id)})</option>`)
-    .join("");
-}
-
-function applyDevStaffTheme() {
-  const email = document.getElementById("dev-theme-staff-select").value;
-  const theme = document.getElementById("dev-theme-select").value;
-  if (!email) {
-    toast("Pick a staff member first.", "danger");
-    return;
-  }
-  db.collection("staff").doc(email).set({ theme }, { merge: true })
-    .then(() => {
-      ACTIVITY.log(`set ${email}'s theme to ${theme} via Developer Tools`);
-      toast(`Theme updated for ${email}.`, "success");
-    })
-    .catch((err) => toast("Couldn't update: " + err.message, "danger"));
 }
 
 function checkDevResetInput() {
@@ -2161,31 +2246,23 @@ function handleSignUp() {
 }
 
 /* ---------------- Theme ----------------
-   Public: self-service, stored in localStorage (per browser/device) —
-   purely a personal display preference, not shared guild data.
-   Admin: NOT self-service anymore — the Guild Leader assigns each
-   staff member's theme individually via Developer Tools, stored on
-   their staff record in Firestore. It's applied automatically once
-   their staff record is known, and re-applies live if changed while
-   they're signed in — see evaluateAccess(). */
-const ALLOWED_THEMES = IS_PUBLIC
-  ? ["dark", "light"]
-  : ["dark", "lighter-dark", "light", "pink", "cyan", "gold"];
+   A plain light-switch toggle, everywhere — no account, no role, no
+   restrictions. Purely a personal display preference, stored in
+   localStorage (per browser/device), same idea on both pages. */
+const ALLOWED_THEMES = ["dark", "light"];
+const THEME_KEY = IS_PUBLIC ? "nsph_theme_public" : "nsph_theme_admin";
 
 function applyTheme(theme) {
   const safe = ALLOWED_THEMES.includes(theme) ? theme : "dark";
   document.body.dataset.theme = safe;
-  if (IS_PUBLIC) {
-    try { localStorage.setItem("nsph_theme_public", safe); } catch (e) {}
-    const btn = document.getElementById("theme-toggle-btn");
-    if (btn) btn.textContent = safe === "dark" ? "☀️" : "🌙";
-  }
+  try { localStorage.setItem(THEME_KEY, safe); } catch (e) {}
+  const btn = document.getElementById("theme-toggle-btn");
+  if (btn) btn.textContent = safe === "dark" ? "☀️" : "🌙";
 }
 
 function initTheme() {
-  if (!IS_PUBLIC) return; // admin theme is applied post-login from the staff record instead
   let saved = "dark";
-  try { saved = localStorage.getItem("nsph_theme_public") || "dark"; } catch (e) {}
+  try { saved = localStorage.getItem(THEME_KEY) || "dark"; } catch (e) {}
   applyTheme(saved);
   document.getElementById("theme-toggle-btn")?.addEventListener("click", () => {
     const current = document.body.dataset.theme === "dark" ? "dark" : "light";
@@ -2205,6 +2282,16 @@ function init() {
 
   // Queue registration submit — present on the public inline form
   document.getElementById("queue-submit-btn")?.addEventListener("click", submitQueueEntry);
+  document.getElementById("claim-modal-submit")?.addEventListener("click", submitClaim);
+
+  document.querySelectorAll("[data-close-modal]").forEach((btn) =>
+    btn.addEventListener("click", () => closeModal(btn.dataset.closeModal))
+  );
+  document.querySelectorAll(".modal-backdrop").forEach((bd) =>
+    bd.addEventListener("click", (e) => {
+      if (e.target === bd) bd.classList.remove("open");
+    })
+  );
 
   if (IS_PUBLIC) {
     STORE.load(() => {
@@ -2212,6 +2299,7 @@ function init() {
       document.getElementById("app-shell").style.display = "";
       renderAll();
     });
+    QUEUE.listen();
     return;
   }
 
@@ -2225,6 +2313,7 @@ function init() {
 
   STORE.load(() => { storeReady = true; evaluateAccess(); });
   STAFF.listen(() => { staffReady = true; evaluateAccess(); });
+  QUEUE.listen();
 
   auth.onAuthStateChanged((user) => {
     currentUser = user;
@@ -2263,6 +2352,7 @@ function init() {
   document.getElementById("logo-file-input")?.addEventListener("change", handleLogoFile);
   document.getElementById("btn-remove-logo")?.addEventListener("click", removeLogo);
 
+  document.getElementById("btn-open-audit-log")?.addEventListener("click", openAuditLog);
   document.getElementById("btn-dev-gate")?.addEventListener("click", openDevGate);
   document.getElementById("dev-gate-submit")?.addEventListener("click", submitDevGate);
   document.getElementById("dev-gate-code")?.addEventListener("keydown", (e) => { if (e.key === "Enter") submitDevGate(); });
@@ -2270,7 +2360,6 @@ function init() {
   document.getElementById("dev-sample-reset-default")?.addEventListener("click", () => {
     document.getElementById("dev-sample-json").value = JSON.stringify(DEFAULT_SAMPLE_DATA, null, 2);
   });
-  document.getElementById("dev-theme-apply")?.addEventListener("click", applyDevStaffTheme);
   document.getElementById("dev-reset-confirm-input")?.addEventListener("input", checkDevResetInput);
   document.getElementById("dev-reset-confirm-btn")?.addEventListener("click", confirmDevReset);
 
@@ -2279,15 +2368,8 @@ function init() {
 
   document.getElementById("inv-search")?.addEventListener("input", renderInventory);
   document.getElementById("pool-search")?.addEventListener("input", renderRosterPool);
-
-  document.querySelectorAll("[data-close-modal]").forEach((btn) =>
-    btn.addEventListener("click", () => closeModal(btn.dataset.closeModal))
-  );
-  document.querySelectorAll(".modal-backdrop").forEach((bd) =>
-    bd.addEventListener("click", (e) => {
-      if (e.target === bd) bd.classList.remove("open");
-    })
-  );
+  document.getElementById("btn-shuffle-pool")?.addEventListener("click", shuffleRosterPool);
+  document.getElementById("btn-unshuffle-pool")?.addEventListener("click", unshuffleRosterPool);
 }
 
 document.addEventListener("DOMContentLoaded", init);

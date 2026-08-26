@@ -73,16 +73,7 @@
     </div>
     <div class="topbar-right">
       <span class="mode-badge">Live · Firebase sync</span>
-      <div class="role-pill">
-        <select id="theme-select" title="Theme">
-          <option value="dark">Dark</option>
-          <option value="lighter-dark">Lighter Dark</option>
-          <option value="light">Light</option>
-          <option value="pink">Pink</option>
-          <option value="cyan">Cyan</option>
-          <option value="gold">Gold</option>
-        </select>
-      </div>
+      <button id="theme-toggle-btn" class="theme-toggle-btn" title="Toggle light/dark">🌙</button>
       <div class="role-pill" id="presence-pill" style="display:none;"></div>
       <div class="role-pill" id="auth-status-pill">
         <span id="auth-user-label"></span>
@@ -132,6 +123,10 @@
           <h3>Roster pool</h3>
           <div class="pool-hint">Drag a chip onto an empty slot. Dimmed = already slotted in this team.</div>
           <input class="pool-search" id="pool-search" placeholder="Search members…" />
+          <div class="actions" style="margin-bottom:10px; gap:6px;">
+            <button class="btn btn-sm btn-ghost" id="btn-shuffle-pool" title="Shuffle the member order for manual review">🔀 Shuffle</button>
+            <button class="btn btn-sm btn-ghost" id="btn-unshuffle-pool" title="Back to gear-sorted order">↕ Gear sort</button>
+          </div>
           <div class="pool-list" id="pool-list"></div>
         </aside>
 
@@ -166,7 +161,6 @@
               <th data-sort-key="name" data-label="Name">Name</th>
               <th data-sort-key="className" data-label="Class">Class</th>
               <th data-sort-key="role" data-label="Role">Role</th>
-              <th data-sort-key="gear" data-label="Gear">Gear</th>
               <th data-sort-key="availability" data-label="Availability">Availability</th>
               <th data-sort-key="group" data-label="Group">Group</th>
               <th></th>
@@ -273,20 +267,12 @@
       </div>
 
       <div class="panel" style="margin-top:16px;">
-        <strong style="font-size:13px;">Recent activity</strong>
+        <strong style="font-size:13px;">Audit Log</strong>
         <div class="view-desc" style="margin-top:4px;">
-          A lightweight glance at who changed what — members, groups, teams, events, staff, and rules. This is intentionally kept simple; a full detailed audit log (every action, filterable) is a planned addition that will live in this same section.
+          A record of who changed what — members, groups, teams, events, staff, and rules — grouped by day, so you can cross-check what happened and when.
         </div>
-        <div id="activity-feed-list" style="margin-top:10px;"></div>
-      </div>
-
-      <div class="panel" style="margin-top:16px; opacity:0.6;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <strong style="font-size:13px;">Full audit log</strong>
-          <span style="font-size:10px; text-transform:uppercase; letter-spacing:0.05em; padding:2px 8px; border-radius:20px; border:1px solid var(--border); color:var(--text-faint);">In progress</span>
-        </div>
-        <div class="view-desc" style="margin-top:4px;">
-          A complete, filterable, exportable record of every admin action — who, what, and exactly when — for full cross-verification. Builds on the Recent Activity feed above. Coming soon.
+        <div class="actions" style="margin-top:12px;">
+          <button class="btn btn-ghost" id="btn-open-audit-log">View Audit Log</button>
         </div>
       </div>
 
@@ -320,12 +306,8 @@
         <label>Availability</label>
         <select id="mf-availability"><option>Available</option><option>Unavailable</option></select>
       </div>
-      <div class="field">
-        <label>Group</label>
-        <select id="mf-group"></select>
-      </div>
-      <div class="field full"><label>Notes</label><textarea id="mf-notes" style="min-height:60px; font-family:var(--font-body);" placeholder="Optional"></textarea></div>
     </div>
+    <div class="field-hint" style="margin-top:-8px; margin-bottom:14px;">Bond (group) membership is managed from the Bond tab — a member can belong to more than one.</div>
     <div class="modal-footer">
       <button class="btn btn-ghost" data-close-modal="member-modal">Cancel</button>
       <button class="btn btn-primary" id="mf-save">Save member</button>
@@ -459,6 +441,16 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="audit-log-modal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-header">
+      <span class="modal-title">Audit Log</span>
+      <button class="modal-close" data-close-modal="audit-log-modal">✕</button>
+    </div>
+    <div id="audit-log-list" style="max-height:60vh; overflow-y:auto;"></div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="dev-gate-modal">
   <div class="modal" style="max-width:320px;">
     <div class="modal-header">
@@ -493,23 +485,6 @@
       </div>
     </div>
 
-    <div class="panel" style="margin-bottom:14px;">
-      <strong style="font-size:13px;">Assign a staff member's theme</strong>
-      <div class="field-hint" style="margin-top:4px; margin-bottom:8px;">Pick who, pick a theme, apply — it updates for them automatically, live if they're online right now.</div>
-      <div class="actions" style="gap:8px; flex-wrap:wrap;">
-        <select id="dev-theme-staff-select" class="pool-search" style="max-width:240px;"></select>
-        <select id="dev-theme-select" class="pool-search" style="max-width:150px;">
-          <option value="dark">Dark</option>
-          <option value="lighter-dark">Lighter Dark</option>
-          <option value="light">Light</option>
-          <option value="pink">Pink</option>
-          <option value="cyan">Cyan</option>
-          <option value="gold">Gold</option>
-        </select>
-        <button class="btn btn-primary btn-sm" id="dev-theme-apply">Apply</button>
-      </div>
-    </div>
-
     <div class="panel" style="border-color: rgba(226,87,76,0.3);">
       <strong style="font-size:13px; color:var(--danger);">Reset all data</strong>
       <div class="field-hint" style="margin-top:4px; margin-bottom:8px;">Wipes members, groups, teams, events, and queue from the shared guild database. This cannot be undone.</div>
@@ -520,6 +495,24 @@
       <div class="actions" style="margin-top:10px;">
         <button class="btn btn-danger" id="dev-reset-confirm-btn" disabled>Reset all data</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="claim-modal">
+  <div class="modal" style="max-width:360px;">
+    <div class="modal-header">
+      <span class="modal-title">Claim this request</span>
+      <button class="modal-close" data-close-modal="claim-modal">✕</button>
+    </div>
+    <div class="field full">
+      <label>Your in-game name</label>
+      <input id="claim-name-input" list="queue-name-datalist" placeholder="Start typing to search…" autocomplete="off" />
+    </div>
+    <div class="field-hint">Must match a registered member name exactly — pick one from the suggestions.</div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close-modal="claim-modal">Cancel</button>
+      <button class="btn btn-primary" id="claim-modal-submit">Claim</button>
     </div>
   </div>
 </div>
