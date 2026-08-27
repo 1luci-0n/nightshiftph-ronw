@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>NightShiftPH Planner</title>
+<title>NightShiftPH</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
@@ -14,7 +14,7 @@
 <div id="loading-screen" class="full-overlay">
   <div class="loading-box">
     <div class="loading-spinner" id="loading-spinner"></div>
-    <div id="loading-text">Connecting to NightShiftPH cloud sync…</div>
+    <div id="loading-text">Puta wait lang eto na...</div>
     <div id="loading-error" style="display:none; max-width:320px; text-align:center; color:var(--danger); font-size:11.5px; margin-top:4px;"></div>
     <button class="btn btn-sm btn-ghost" id="btn-loading-retry" style="display:none;">Retry</button>
   </div>
@@ -41,7 +41,7 @@
       <button class="btn btn-primary" id="btn-signin">Sign in</button>
     </div>
     <div class="field-hint" style="margin-top:14px;">
-      New here? Your email must already be approved by your Guild Leader under Admin → Staff before you can create an account.
+      Please PM @Waddle, @Salvia, @Bloinded, @Oni-musha, or @Oruriee to be verified.
     </div>
   </div>
 </div>
@@ -56,7 +56,7 @@
       This email hasn't been approved for staff access yet.
     </div>
     <div class="field-hint" style="margin-bottom:18px;">
-      Ask your Guild Leader to add you under Admin → Staff, then refresh this page.
+      Ask your Guild Leader or Co-Leaders for approval.
     </div>
     <div class="actions" style="justify-content:center; gap:10px;">
       <a class="btn btn-ghost" href="public.html">View public roster instead</a>
@@ -72,22 +72,22 @@
       <span class="brand-mark"><span id="brand-logo">⌘</span> <span id="brand-guild-name">NightShiftPH</span></span>
     </div>
     <div class="topbar-right">
-      <span class="mode-badge">Live · Firebase sync</span>
+      <span class="mode-badge">Live Dildo-ramming · Sync</span>
       <button id="theme-toggle-btn" class="theme-toggle-btn" title="Toggle light/dark">🌙</button>
       <div class="role-pill" id="presence-pill" style="display:none;"></div>
       <div class="role-pill" id="auth-status-pill">
         <span id="auth-user-label"></span>
-        <button class="btn btn-sm btn-ghost" id="btn-signout">Sign out</button>
+        <button class="btn btn-sm btn-ghost" id="btn-signout">Get Out!</button>
       </div>
     </div>
   </header>
 
   <nav class="sidebar">
-    <button class="nav-item nav-item-disabled" data-tooltip="In progress — coming soon"><span class="ico">📣</span> Announcements</button>
+    <button class="nav-item nav-item-disabled" data-tooltip="Just a little more..."><span class="ico">📣</span> Announcements</button>
     <button class="nav-item" data-view="queue"><span class="ico">🩹</span> Queues</button>
     <button class="nav-item active" data-view="builder"><span class="ico">⚔</span> Roster</button>
     <button class="nav-item" data-view="events"><span class="ico">🏁</span> Events</button>
-    <button class="nav-item nav-item-disabled" data-tooltip="Feature will be available soon"><span class="ico">🎟</span> Raffle</button>
+    <button class="nav-item nav-item-disabled" data-tooltip="No current Raffle being drawn..."><span class="ico">🎟</span> Raffle</button>
     <button class="nav-item" data-view="inventory"><span class="ico">☰</span> Members</button>
     <button class="nav-item" data-view="groups"><span class="ico">◈</span> Bond</button>
     <div class="nav-admin-separator"></div>
