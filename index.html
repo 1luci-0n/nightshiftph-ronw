@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>NightShiftPH Planner</title>
+<title>NightShiftPH</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
@@ -14,7 +14,7 @@
 <div id="loading-screen" class="full-overlay">
   <div class="loading-box">
     <div class="loading-spinner" id="loading-spinner"></div>
-    <div id="loading-text">Connecting to NightShiftPH cloud sync…</div>
+    <div id="loading-text">Puta wait lang eto na nga oh…</div>
     <div id="loading-error" style="display:none; max-width:320px; text-align:center; color:var(--danger); font-size:11.5px; margin-top:4px;"></div>
     <button class="btn btn-sm btn-ghost" id="btn-loading-retry" style="display:none;">Retry</button>
   </div>
@@ -37,11 +37,11 @@
     </div>
 
     <div class="actions" style="margin-top:14px; justify-content:flex-end;">
-      <button class="btn btn-ghost" id="btn-signup">Create account</button>
-      <button class="btn btn-primary" id="btn-signin">Sign in</button>
+      <button class="btn btn-ghost" id="btn-signup">Verify Yourself</button>
+      <button class="btn btn-primary" id="btn-signin">Log In</button>
     </div>
     <div class="field-hint" style="margin-top:14px;">
-      New here? Your email must already be approved by your Guild Leader under Admin → Staff before you can create an account.
+      Contact @Waddle, @Salvia, @Bloinded, @Oni-musha, or @Oruriee to approve your verification.
     </div>
   </div>
 </div>
@@ -56,10 +56,10 @@
       This email hasn't been approved for staff access yet.
     </div>
     <div class="field-hint" style="margin-bottom:18px;">
-      Ask your Guild Leader to add you under Admin → Staff, then refresh this page.
+      Ask a Guild Staff to approve your verification.
     </div>
     <div class="actions" style="justify-content:center; gap:10px;">
-      <a class="btn btn-ghost" href="public.html">View public roster instead</a>
+      <a class="btn btn-ghost" href="public.html">View Dashboard instead</a>
       <button class="btn btn-primary" id="btn-signout-pending">Sign out</button>
     </div>
   </div>
@@ -72,7 +72,7 @@
       <span class="brand-mark"><span id="brand-logo">⌘</span> <span id="brand-guild-name">NightShiftPH</span></span>
     </div>
     <div class="topbar-right">
-      <span class="mode-badge">Live · Firebase sync</span>
+      <span class="mode-badge">Live Dildo-Ramming · Dih-Sync</span>
       <button id="theme-toggle-btn" class="theme-toggle-btn" title="Toggle light/dark">🌙</button>
       <div class="role-pill" id="presence-pill" style="display:none;"></div>
       <div class="role-pill" id="auth-status-pill">
@@ -83,11 +83,11 @@
   </header>
 
   <nav class="sidebar">
-    <button class="nav-item nav-item-disabled" data-tooltip="In progress — coming soon"><span class="ico">📣</span> Announcements</button>
+    <button class="nav-item nav-item-disabled" data-tooltip="patapos na siya, promise..."><span class="ico">📣</span> Announcements</button>
     <button class="nav-item" data-view="queue"><span class="ico">🩹</span> Queues</button>
     <button class="nav-item active" data-view="builder"><span class="ico">⚔</span> Roster</button>
     <button class="nav-item" data-view="events"><span class="ico">🏁</span> Events</button>
-    <button class="nav-item nav-item-disabled" data-tooltip="Feature will be available soon"><span class="ico">🎟</span> Raffle</button>
+    <button class="nav-item nav-item-disabled" data-tooltip="Magpapa-raffle ka? GO!"><span class="ico">🎟</span> Raffle</button>
     <button class="nav-item" data-view="inventory"><span class="ico">☰</span> Members</button>
     <button class="nav-item" data-view="groups"><span class="ico">◈</span> Bond</button>
     <div class="nav-admin-separator"></div>
@@ -101,7 +101,7 @@
       <div class="view-header">
         <div>
           <div class="view-title">Roster</div>
-          <div class="view-desc">Drag members — or drag a whole group at once — into party slots. The ring on each party shows role coverage against your Admin composition rules — red means a gap.</div>
+          <div class="view-desc">Drag Guild Members or Bonds into party slots.</div>
         </div>
       </div>
 
@@ -139,11 +139,11 @@
       <div class="view-header">
         <div>
           <div class="view-title">Members</div>
-          <div class="view-desc">Add members once, tag their current role and class, and assign them to a Bond. Because of Job Freedom, re-check role tags after a member respecs — or let picking a class auto-suggest one.</div>
+          <div class="view-desc">Because of Job Freedom, re-check role tags after a member respecs or let picking a class auto-suggest one.</div>
         </div>
         <div class="actions">
-          <button class="btn btn-ghost" id="btn-bulk-paste">Paste from spreadsheet</button>
-          <button class="btn btn-primary" id="btn-add-member">+ Add member</button>
+          <button class="btn btn-ghost" id="btn-bulk-paste">Spreadsheet Import</button>
+          <button class="btn btn-primary" id="btn-add-member">+ Add Member</button>
         </div>
       </div>
 
@@ -162,7 +162,7 @@
               <th data-sort-key="className" data-label="Class">Class</th>
               <th data-sort-key="role" data-label="Role">Role</th>
               <th data-sort-key="availability" data-label="Availability">Availability</th>
-              <th data-sort-key="group" data-label="Group">Group</th>
+              <th data-sort-key="group" data-label="Group">Bond</th>
               <th></th>
             </tr>
           </thead>
@@ -176,10 +176,10 @@
       <div class="view-header">
         <div>
           <div class="view-title">Bond</div>
-          <div class="view-desc">Cluster members who play together — up to 5 per group, matching a full party. Auto-fill suggestions in Roster prefer slotting a party with people from the same group first, and you can drag a whole group onto a party at once.</div>
+          <div class="view-desc">Cluster members who play together. Auto-fill suggestions in Roster prefer slotting a party with people from the same group first, and you can drag a whole group onto a party at once.</div>
         </div>
         <div class="actions">
-          <button class="btn btn-primary" id="btn-add-group">+ New group</button>
+          <button class="btn btn-primary" id="btn-add-group">+ New Bond</button>
         </div>
       </div>
       <div class="group-grid" id="group-grid"></div>
@@ -190,10 +190,10 @@
       <div class="view-header">
         <div>
           <div class="view-title">Events &amp; Participation</div>
-          <div class="view-desc">Log Guild League and Polarity Zone runs. Link the team(s) used and anyone slotted in Roster is logged automatically — you only need to check off the rest.</div>
+          <div class="view-desc">Log Guild League and Polarity Zone runs.</div>
         </div>
         <div class="actions">
-          <button class="btn btn-primary" id="btn-add-event">+ New event</button>
+          <button class="btn btn-primary" id="btn-add-event">+ New Event</button>
         </div>
       </div>
       <div class="event-list" id="event-list"></div>
@@ -204,7 +204,7 @@
       <div class="view-header">
         <div>
           <div class="view-title">Queues</div>
-          <div class="view-desc">Members who've cleared a run sign others up here — no more losing track of who's covered in guild chat. Claim an entry while you're helping, and mark it helped once they're clear.</div>
+          <div class="view-desc">Claim an entry while you're helping, and mark it helped once they're clear.</div>
         </div>
         <div class="actions">
           <button class="btn btn-primary" id="btn-queue-add">+ Register member for queue</button>
@@ -218,7 +218,7 @@
       <div class="view-header">
         <div>
           <div class="view-title">Admin</div>
-          <div class="view-desc">Set guild name and the minimum role counts a party needs before Roster stops flagging it. Tune these as your comp meta evolves.</div>
+          <div class="view-desc">Bat mo nga ba gagalawin mga nandito? Tingin-tingin lang para di' ma-stroke.</div>
         </div>
       </div>
 
@@ -234,7 +234,7 @@
             <input type="file" id="logo-file-input" accept="image/png,image/jpeg" style="max-width:220px; font-size:11px;" />
             <button class="btn btn-sm btn-ghost" id="btn-remove-logo">Remove</button>
           </div>
-          <div class="field-hint">PNG or JPG, square works best, under 150KB. Shows on both this page and the public view.</div>
+          <div class="field-hint">PNG or JPG, square works best, under 150KB.</div>
         </div>
       </div>
 
@@ -247,19 +247,19 @@
           <div class="rule-item"><label>DPS</label><input type="number" min="0" id="rule-dps" /></div>
         </div>
         <div class="actions" style="margin-top:14px;">
-          <button class="btn btn-primary" id="rules-save">Save rules</button>
+          <button class="btn btn-primary" id="rules-save">Save Rules</button>
         </div>
       </div>
 
       <div class="panel" style="margin-top:16px;">
         <strong style="font-size:13px;">Staff &amp; permissions</strong>
         <div class="view-desc" style="margin-top:4px;">
-          Add someone's login email here to grant them access. The Guild Leader is the only one who can assign Co-Leaders; Co-Leaders can assign Admin Staff but not other Co-Leaders. They still need to create their own account with that same email using "Create account" on the sign-in screen.
+          The Guild Leader is the only one who can assign Co-Leaders; Co-Leaders can assign Admin Staff but not other Co-Leaders.
         </div>
         <div id="staff-list" style="margin-top:10px;"></div>
         <div class="actions" id="staff-add-form" style="margin-top:12px; gap:8px; flex-wrap:wrap;">
-          <input id="staff-name-input" class="pool-search" placeholder="Name or handle" style="max-width:180px;" />
-          <input id="staff-email-input" class="pool-search" type="email" placeholder="Their login email" style="max-width:200px;" />
+          <input id="staff-name-input" class="pool-search" placeholder="In-Game Name" style="max-width:180px;" />
+          <input id="staff-email-input" class="pool-search" type="email" placeholder="Login Email" style="max-width:200px;" />
           <select id="staff-role-select" class="pool-search" style="max-width:150px;"></select>
           <button class="btn btn-primary btn-sm" id="staff-add-btn">Assign</button>
         </div>
@@ -269,7 +269,7 @@
       <div class="panel" style="margin-top:16px;">
         <strong style="font-size:13px;">Audit Log</strong>
         <div class="view-desc" style="margin-top:4px;">
-          A record of who changed what — members, groups, teams, events, staff, and rules — grouped by day, so you can cross-check what happened and when.
+          A record of who changed what members, groups, teams, events, staff, and rules so you can cross-check what happened and when. Basta yon, self-explanatory kapag nakita mo.
         </div>
         <div class="actions" style="margin-top:12px;">
           <button class="btn btn-ghost" id="btn-open-audit-log">View Audit Log</button>
@@ -307,7 +307,7 @@
         <select id="mf-availability"><option>Available</option><option>Unavailable</option></select>
       </div>
     </div>
-    <div class="field-hint" style="margin-top:-8px; margin-bottom:14px;">Bond (group) membership is managed from the Bond tab — a member can belong to more than one.</div>
+    <div class="field-hint" style="margin-top:-8px; margin-bottom:14px;">Bond (group) membership is managed from the Bond tab.</div>
     <div class="modal-footer">
       <button class="btn btn-ghost" data-close-modal="member-modal">Cancel</button>
       <button class="btn btn-primary" id="mf-save">Save member</button>
@@ -318,12 +318,12 @@
 <div class="modal-backdrop" id="bulk-modal">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title">Paste from spreadsheet</span>
+      <span class="modal-title">Spreadsheet Import</span>
       <button class="modal-close" data-close-modal="bulk-modal">✕</button>
     </div>
     <div class="field full">
       <label>One member per line — Name, Class, Role, Availability</label>
-      <textarea id="bulk-paste" placeholder="Aeris, Paladin, Tank, Available&#10;Lunael, Priest, FS, Available&#10;Kael, Sniper, DPS, Available"></textarea>
+      <textarea id="bulk-paste" placeholder="Waddle, Paladin, Tank, Available&#10;Graveyard, High Priest, FS, Available&#10;Salvia, Sniper, DPS, Available"></textarea>
       <div class="field-hint">Paste directly from Excel/Google Sheets (tab-separated) or comma-separated. Unrecognized roles default to DPS, unrecognized availability defaults to Available.</div>
     </div>
     <div class="modal-footer">
@@ -336,11 +336,11 @@
 <div class="modal-backdrop" id="group-modal">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title" id="group-modal-title">New group</span>
+      <span class="modal-title" id="group-modal-title">New Bond</span>
       <button class="modal-close" data-close-modal="group-modal">✕</button>
     </div>
     <div class="field-grid">
-      <div class="field full"><label>Group name</label><input id="gf-name" placeholder="e.g. Night Shift Crew" /></div>
+      <div class="field full"><label>Group Name</label><input id="gf-name" placeholder="e.g. Susu Sisters" /></div>
     </div>
     <div class="field full">
       <label>Members in this group (<span id="gf-member-count">0/5 selected</span>)</label>
@@ -349,7 +349,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" data-close-modal="group-modal">Cancel</button>
-      <button class="btn btn-primary" id="gf-save">Save group</button>
+      <button class="btn btn-primary" id="gf-save">Save Bond</button>
     </div>
   </div>
 </div>
@@ -357,11 +357,11 @@
 <div class="modal-backdrop" id="event-modal">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title">New event</span>
+      <span class="modal-title">New Event</span>
       <button class="modal-close" data-close-modal="event-modal">✕</button>
     </div>
     <div class="field-grid">
-      <div class="field full"><label>Event name</label><input id="ef-name" placeholder="e.g. Polarity Zone — Round 3" /></div>
+      <div class="field full"><label>Event name</label><input id="ef-name" placeholder="e.g. Guild League 1st 07-21-26" /></div>
       <div class="field full"><label>Date</label><input id="ef-date" type="date" /></div>
     </div>
     <div class="field full">
@@ -371,7 +371,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" data-close-modal="event-modal">Cancel</button>
-      <button class="btn btn-primary" id="ef-save">Create event</button>
+      <button class="btn btn-primary" id="ef-save">Create Event</button>
     </div>
   </div>
 </div>
@@ -379,7 +379,7 @@
 <div class="modal-backdrop" id="delete-event-modal">
   <div class="modal" style="max-width:420px;">
     <div class="modal-header">
-      <span class="modal-title" style="color:var(--danger);">Delete event</span>
+      <span class="modal-title" style="color:var(--danger);">Delete Event</span>
       <button class="modal-close" data-close-modal="delete-event-modal">✕</button>
     </div>
     <div class="field full">
@@ -509,7 +509,7 @@
       <label>Your in-game name</label>
       <input id="claim-name-input" list="queue-name-datalist" placeholder="Start typing to search…" autocomplete="off" />
     </div>
-    <div class="field-hint">Must match a registered member name exactly — pick one from the suggestions.</div>
+    <div class="field-hint">Must match a registered member name exactly.</div>
     <div class="modal-footer">
       <button class="btn btn-ghost" data-close-modal="claim-modal">Cancel</button>
       <button class="btn btn-primary" id="claim-modal-submit">Claim</button>
