@@ -40,6 +40,31 @@ function getAutoRoleForClass(className) {
   return CLASS_TO_ROLE[className] || "DPS";
 }
 
+/* Class route → CSS color variable, applied to an IGN's text color
+   wherever it's shown (this replaces role-based coloring entirely —
+   role is still tracked and used for composition rules, it's just no
+   longer color-coded). Variables are defined per-theme in styles.css
+   so each stays readable on both Light and Dark. */
+const CLASS_COLOR_VAR = {
+  "Swordsman": "--class-swordsman",
+  "Mage": "--class-mage",
+  "Archer": "--class-archer",
+  "Acolyte": "--class-acolyte",
+  "Thief": "--class-thief",
+  "Merchant": "--class-merchant",
+  "Gunslinger": "--class-gunslinger",
+  "Druid": "--class-druid",
+};
+function getClassRoute(className) {
+  const group = CLASS_GROUPS.find((g) => g.jobs.includes(className));
+  return group ? group.base : null;
+}
+function classColorStyle(className) {
+  const route = getClassRoute(className);
+  const v = route ? CLASS_COLOR_VAR[route] : null;
+  return v ? ` style="color:var(${v});"` : "";
+}
+
 const DUNGEONS = [
   { id: "moonlight", name: "Moonlight Flower", icon: "🦊" },
   { id: "dracula", name: "Dracula", icon: "🦇" },
@@ -112,6 +137,7 @@ const STORE = {
         m.groupIds = m.groupId ? [m.groupId] : [];
       }
       delete m.groupId;
+      delete m.gear; // Gear Rating concept removed entirely in v0.7a
     });
     this.state.teams.forEach((t) => {
       t.parties.forEach((p) => {
@@ -678,9 +704,9 @@ function renderInventory() {
     .map((m) => {
       const groups = getGroupsForMember(m);
       return `<tr>
-        <td>${escapeHtml(m.name)}</td>
+        <td${classColorStyle(m.className)}>${escapeHtml(m.name)}</td>
         <td>${escapeHtml(m.className || "—")}</td>
-        <td><span class="role-chip role-${m.role}" style="color:${ROLE_COLOR[m.role]}">${m.role}</span></td>
+        <td><span class="role-chip">${m.role}</span></td>
         <td><span class="avail-dot avail-${m.availability}"></span>${m.availability}</td>
         <td>${groups.length ? groups.map((g) => escapeHtml(g.name)).join(", ") : "<span style='color:var(--text-faint)'>Unassigned</span>"}</td>
         <td>
@@ -769,7 +795,6 @@ function saveMemberForm() {
     name,
     className: document.getElementById("mf-class").value,
     role: document.getElementById("mf-role").value,
-    gear: editingMemberId ? (getMember(editingMemberId)?.gear ?? 0) : 0,
     availability: document.getElementById("mf-availability").value,
     groupIds: editingMemberId ? (getMember(editingMemberId)?.groupIds ?? []) : [],
     notes: editingMemberId ? (getMember(editingMemberId)?.notes ?? "") : "",
@@ -806,7 +831,7 @@ function parseBulkPaste() {
   let skipped = 0;
   lines.forEach((line) => {
     const cols = line.split(/\t|,(?![^(]*\))/).map((c) => c.trim());
-    const [name, className, role, gear, availability] = cols;
+    const [name, className, role, availability] = cols;
     if (!name) return;
     const key = name.trim().toLowerCase();
     if (seenNames.has(key)) {
@@ -824,9 +849,8 @@ function parseBulkPaste() {
       name,
       className: className || "",
       role: normRole,
-      gear: Number(gear) || 0,
       availability: normAvail,
-      groupId: null,
+      groupIds: [],
       notes: "",
     });
     added++;
@@ -869,7 +893,7 @@ function renderGroups() {
         </div>
         <div class="group-members">
           ${members.length === 0 ? `<span style="color:var(--text-faint);font-size:11px;">No members assigned yet.</span>` :
-            members.map((m) => `<span class="member-tag">${escapeHtml(m.name)}</span>`).join("")}
+            members.map((m) => `<span class="member-tag"${classColorStyle(m.className)}>${escapeHtml(m.name)}</span>`).join("")}
         </div>
       </div>`;
     })
@@ -993,6 +1017,7 @@ function saveGroupForm() {
    RENDER: Team Builder
    ================================================================ */
 let activeTeamId = null;
+let rosterSearchQuery = "";
 
 function renderTeamControls() {
   const eliteCount = teamsOfType("elite").length;
@@ -1171,11 +1196,10 @@ function renderTeamBuilder() {
         .map((mid, idx) => {
           const m = mid ? getMember(mid) : null;
           if (m) {
-            return `<div class="slot filled" draggable="${canEdit()}" data-slot-drag="${p.id}:${idx}">
+            const isMatch = rosterSearchQuery && m.name.toLowerCase().includes(rosterSearchQuery);
+            return `<div class="slot filled ${isMatch ? "highlight" : ""}" draggable="${canEdit()}" data-slot-drag="${p.id}:${idx}">
               <span class="slot-idx">${idx + 1}</span>
-              <span class="rd" style="background:${ROLE_COLOR[m.role]}"></span>
-              <span class="nm">${escapeHtml(m.name)}</span>
-              <span class="gr">${m.gear}</span>
+              <span class="nm"${classColorStyle(m.className)}>${escapeHtml(m.name)}</span>
               ${canEdit() ? `<button class="remove-btn" data-remove-slot="${p.id}:${idx}">✕</button>` : ""}
             </div>`;
           }
@@ -1413,18 +1437,18 @@ function suggestForSlot(team, partyId, idx) {
     pool = roleMatch;
   }
 
-  pool.sort((a, b) => b.gear - a.gear);
+  pool.sort((a, b) => a.name.localeCompare(b.name));
   const pick = pool[0];
   party.slots[idx] = pick.id;
   party.verified = false;
   STORE.save();
   renderTeamBuilder();
   renderRosterPool();
-  toast(`Suggested ${pick.name} (${pick.role}, ${pick.gear} gear)${isGroupContext ? " — groupmate." : " — individual member."}`, "success");
+  toast(`Suggested ${pick.name} (${pick.role})${isGroupContext ? " — groupmate." : " — individual member."}`, "success");
 }
 
 /* ---------------- Roster pool (drag source: individual members + whole groups) ---------------- */
-let poolSortMode = "gear"; // "gear" | "random"
+let poolSortMode = "default"; // "default" | "random"
 let poolRandomOrder = [];
 
 function shuffleRosterPool() {
@@ -1439,7 +1463,7 @@ function shuffleRosterPool() {
 }
 
 function unshuffleRosterPool() {
-  poolSortMode = "gear";
+  poolSortMode = "default";
   renderRosterPool();
 }
 
@@ -1468,7 +1492,7 @@ function renderRosterPool() {
   if (poolSortMode === "random" && poolRandomOrder.length) {
     members.sort((a, b) => poolRandomOrder.indexOf(a.id) - poolRandomOrder.indexOf(b.id));
   } else {
-    members.sort((a, b) => b.gear - a.gear);
+    members.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   const membersHtml = members.length
@@ -1477,9 +1501,7 @@ function renderRosterPool() {
         .map((m) => {
           const slotted = globallySlotted.has(m.id);
           return `<div class="pool-chip ${slotted ? "slotted" : ""}" draggable="${canEdit() && !slotted}" data-pool-member="${m.id}" title="${slotted ? "Already slotted on a team" : ""}">
-            <span class="rd" style="background:${ROLE_COLOR[m.role]}"></span>
-            <span class="nm">${escapeHtml(m.name)}</span>
-            <span class="gr">${m.gear}</span>
+            <span class="nm"${classColorStyle(m.className)}>${escapeHtml(m.name)}</span>
           </div>`;
         })
         .join("")
@@ -1626,7 +1648,7 @@ function renderAttendanceList() {
   } else if (autoMembers.length === 0) {
     autoWrap.innerHTML = `<span style="color:var(--text-faint); font-size:11.5px;">No matches for "${escapeHtml(autoQ)}".</span>`;
   } else {
-    autoWrap.innerHTML = autoMembers.map((m) => `<span class="member-tag">${escapeHtml(m.name)}</span>`).join("");
+    autoWrap.innerHTML = autoMembers.map((m) => `<span class="member-tag"${classColorStyle(m.className)}>${escapeHtml(m.name)}</span>`).join("");
   }
   document.getElementById("attendance-auto-count").textContent = allAutoMembers.length;
 
@@ -1852,7 +1874,7 @@ function renderQueueList() {
                  </span>`;
             return `<div class="queue-row">
               <span class="queue-pos">#${i + 1}</span>
-              <span class="queue-name">${escapeHtml(m.name)}</span>
+              <span class="queue-name"${classColorStyle(m.className)}>${escapeHtml(m.name)}</span>
               <span class="queue-icons">${icons}</span>
               ${statusHtml}
             </div>`;
@@ -1881,7 +1903,7 @@ function renderQueueList() {
             .join(" ");
           return `<div class="queue-row admin">
             <span class="queue-pos">#${i + 1}</span>
-            <span class="queue-name">${m ? escapeHtml(m.name) : "Unknown member"}</span>
+            <span class="queue-name"${m ? classColorStyle(m.className) : ""}>${m ? escapeHtml(m.name) : "Unknown member"}</span>
             <span class="queue-icons">${icons}</span>
             <span class="queue-claim">${helper ? `Helped by ${escapeHtml(helper.name)}` : "Unclaimed"}</span>
             ${
@@ -2037,16 +2059,16 @@ function saveRules() {
 const DEV_CODE = "180603";
 
 const DEFAULT_SAMPLE_DATA = [
-  { name: "Aeris", className: "Paladin", role: "Tank", gear: 192, availability: "Available", grouped: true },
-  { name: "Vessahl", className: "Lord Knight", role: "Tank", gear: 178, availability: "Available", grouped: true },
-  { name: "Lunael", className: "High Priest", role: "FS", gear: 175, availability: "Available", grouped: true },
-  { name: "Cyrenne", className: "Priest", role: "FS", gear: 168, availability: "Available", grouped: true },
-  { name: "Kael", className: "Sniper", role: "DPS", gear: 205, availability: "Available", grouped: true },
-  { name: "Dorian", className: "Assassin Cross", role: "DPS", gear: 199, availability: "Available", grouped: false },
-  { name: "Fennis", className: "Champion", role: "DPS", gear: 184, availability: "Unavailable", grouped: false },
-  { name: "Ithra", className: "Whitesmith", role: "DPS", gear: 172, availability: "Available", grouped: false },
-  { name: "Marewen", className: "Karnos", role: "DPS", gear: 190, availability: "Available", grouped: false },
-  { name: "Talos", className: "Rebel", role: "DPS", gear: 165, availability: "Unavailable", grouped: false },
+  { name: "Aeris", className: "Paladin", role: "Tank", availability: "Available", grouped: true },
+  { name: "Vessahl", className: "Lord Knight", role: "Tank", availability: "Available", grouped: true },
+  { name: "Lunael", className: "High Priest", role: "FS", availability: "Available", grouped: true },
+  { name: "Cyrenne", className: "Priest", role: "FS", availability: "Available", grouped: true },
+  { name: "Kael", className: "Sniper", role: "DPS", availability: "Available", grouped: true },
+  { name: "Dorian", className: "Assassin Cross", role: "DPS", availability: "Available", grouped: false },
+  { name: "Fennis", className: "Champion", role: "DPS", availability: "Unavailable", grouped: false },
+  { name: "Ithra", className: "Whitesmith", role: "DPS", availability: "Available", grouped: false },
+  { name: "Marewen", className: "Karnos", role: "DPS", availability: "Available", grouped: false },
+  { name: "Talos", className: "Rebel", role: "DPS", availability: "Unavailable", grouped: false },
 ];
 
 function openDevGate() {
@@ -2103,9 +2125,8 @@ function loadDevSampleData() {
       name: m.name || `Member ${i + 1}`,
       className: m.className || "",
       role: ROLE_ORDER.includes(m.role) ? m.role : "DPS",
-      gear: Number(m.gear) || 0,
       availability: m.availability === "Unavailable" ? "Unavailable" : "Available",
-      groupId: m.grouped ? g1.id : null,
+      groupIds: m.grouped ? [g1.id] : [],
       notes: "",
     });
   });
@@ -2300,6 +2321,10 @@ function init() {
       renderAll();
     });
     QUEUE.listen();
+    document.getElementById("roster-search-public")?.addEventListener("input", (e) => {
+      rosterSearchQuery = e.target.value.trim().toLowerCase();
+      renderTeamBuilder();
+    });
     return;
   }
 

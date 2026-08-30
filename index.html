@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>NightShiftPH</title>
+<title>NightShiftPH Planner</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
@@ -14,7 +14,7 @@
 <div id="loading-screen" class="full-overlay">
   <div class="loading-box">
     <div class="loading-spinner" id="loading-spinner"></div>
-    <div id="loading-text">Puta wait lang eto na...</div>
+    <div id="loading-text">Connecting to NightShiftPH cloud sync…</div>
     <div id="loading-error" style="display:none; max-width:320px; text-align:center; color:var(--danger); font-size:11.5px; margin-top:4px;"></div>
     <button class="btn btn-sm btn-ghost" id="btn-loading-retry" style="display:none;">Retry</button>
   </div>
@@ -37,11 +37,11 @@
     </div>
 
     <div class="actions" style="margin-top:14px; justify-content:flex-end;">
-      <button class="btn btn-ghost" id="btn-signup">Register</button>
-      <button class="btn btn-primary" id="btn-signin">Log In</button>
+      <button class="btn btn-ghost" id="btn-signup">Create account</button>
+      <button class="btn btn-primary" id="btn-signin">Sign in</button>
     </div>
     <div class="field-hint" style="margin-top:14px;">
-      Please PM @Waddle, @Salvia, @Bloinded, @Oni-musha, or @Oruriee to be verified.
+      New here? Your email must already be approved by your Guild Leader under Admin → Staff before you can create an account.
     </div>
   </div>
 </div>
@@ -56,10 +56,10 @@
       This email hasn't been approved for staff access yet.
     </div>
     <div class="field-hint" style="margin-bottom:18px;">
-      Ask your Guild Leader or Co-Leaders for approval.
+      Ask your Guild Leader to add you under Admin → Staff, then refresh this page.
     </div>
     <div class="actions" style="justify-content:center; gap:10px;">
-      <a class="btn btn-ghost" href="public.html">View Dashboard in the meantime</a>
+      <a class="btn btn-ghost" href="public.html">View public roster instead</a>
       <button class="btn btn-primary" id="btn-signout-pending">Sign out</button>
     </div>
   </div>
@@ -72,22 +72,22 @@
       <span class="brand-mark"><span id="brand-logo">⌘</span> <span id="brand-guild-name">NightShiftPH</span></span>
     </div>
     <div class="topbar-right">
-      <span class="mode-badge">Live Dildo-ramming · Sync</span>
+      <span class="mode-badge">Live · Firebase sync</span>
       <button id="theme-toggle-btn" class="theme-toggle-btn" title="Toggle light/dark">🌙</button>
       <div class="role-pill" id="presence-pill" style="display:none;"></div>
       <div class="role-pill" id="auth-status-pill">
         <span id="auth-user-label"></span>
-        <button class="btn btn-sm btn-ghost" id="btn-signout">Get Out!</button>
+        <button class="btn btn-sm btn-ghost" id="btn-signout">Sign out</button>
       </div>
     </div>
   </header>
 
   <nav class="sidebar">
-    <button class="nav-item nav-item-disabled" data-tooltip="In production, will be Live soon..."><span class="ico">📣</span> Announcements</button>
+    <button class="nav-item nav-item-disabled" data-tooltip="In progress — coming soon"><span class="ico">📣</span> Announcements</button>
     <button class="nav-item" data-view="queue"><span class="ico">🩹</span> Queues</button>
     <button class="nav-item active" data-view="builder"><span class="ico">⚔</span> Roster</button>
     <button class="nav-item" data-view="events"><span class="ico">🏁</span> Events</button>
-    <button class="nav-item nav-item-disabled" data-tooltip="Kuripot naman ng Guild na to`"><span class="ico">🎟</span> Raffle</button>
+    <button class="nav-item nav-item-disabled" data-tooltip="Feature will be available soon"><span class="ico">🎟</span> Raffle</button>
     <button class="nav-item" data-view="inventory"><span class="ico">☰</span> Members</button>
     <button class="nav-item" data-view="groups"><span class="ico">◈</span> Bond</button>
     <div class="nav-admin-separator"></div>
@@ -101,7 +101,7 @@
       <div class="view-header">
         <div>
           <div class="view-title">Roster</div>
-          <div class="view-desc">Click-and-Drag Members or Bonds from the Pool.</div>
+          <div class="view-desc">Drag members — or drag a whole group at once — into party slots. The ring on each party shows role coverage against your Admin composition rules — red means a gap.</div>
         </div>
       </div>
 
@@ -121,11 +121,11 @@
       <div class="builder-layout">
         <aside class="roster-pool">
           <h3>Roster pool</h3>
-          <div class="pool-hint">Drag a chip onto an empty slot.</div>
+          <div class="pool-hint">Drag a chip onto an empty slot. Dimmed = already slotted in this team.</div>
           <input class="pool-search" id="pool-search" placeholder="Search members…" />
           <div class="actions" style="margin-bottom:10px; gap:6px;">
             <button class="btn btn-sm btn-ghost" id="btn-shuffle-pool" title="Shuffle the member order for manual review">🔀 Shuffle</button>
-            <button class="btn btn-sm btn-ghost" id="btn-unshuffle-pool" title="Back to gear-sorted order">↕ Gear sort</button>
+            <button class="btn btn-sm btn-ghost" id="btn-unshuffle-pool" title="Back to alphabetical order">↕ A-Z sort</button>
           </div>
           <div class="pool-list" id="pool-list"></div>
         </aside>
@@ -139,10 +139,10 @@
       <div class="view-header">
         <div>
           <div class="view-title">Members</div>
-          <div class="view-desc">Because of Job Freedom, re-check role tags after a member respecs.</div>
+          <div class="view-desc">Add members once, tag their current role and class, and assign them to a Bond. Because of Job Freedom, re-check role tags after a member respecs — or let picking a class auto-suggest one.</div>
         </div>
         <div class="actions">
-          <button class="btn btn-ghost" id="btn-bulk-paste">Spreadsheet Import</button>
+          <button class="btn btn-ghost" id="btn-bulk-paste">Paste from spreadsheet</button>
           <button class="btn btn-primary" id="btn-add-member">+ Add member</button>
         </div>
       </div>
@@ -162,7 +162,7 @@
               <th data-sort-key="className" data-label="Class">Class</th>
               <th data-sort-key="role" data-label="Role">Role</th>
               <th data-sort-key="availability" data-label="Availability">Availability</th>
-              <th data-sort-key="group" data-label="Group">Bond</th>
+              <th data-sort-key="group" data-label="Group">Group</th>
               <th></th>
             </tr>
           </thead>
@@ -176,10 +176,10 @@
       <div class="view-header">
         <div>
           <div class="view-title">Bond</div>
-          <div class="view-desc">Cluster members who mostly play together. Auto-fill suggestions in Roster prefer slotting a party with people from the same group first.</div>
+          <div class="view-desc">Cluster members who play together — up to 5 per group, matching a full party. Auto-fill suggestions in Roster prefer slotting a party with people from the same group first, and you can drag a whole group onto a party at once.</div>
         </div>
         <div class="actions">
-          <button class="btn btn-primary" id="btn-add-group">+ New Group</button>
+          <button class="btn btn-primary" id="btn-add-group">+ New group</button>
         </div>
       </div>
       <div class="group-grid" id="group-grid"></div>
@@ -190,10 +190,10 @@
       <div class="view-header">
         <div>
           <div class="view-title">Events &amp; Participation</div>
-          <div class="view-desc">Log Guild League and Polarity Zone runs.</div>
+          <div class="view-desc">Log Guild League and Polarity Zone runs. Link the team(s) used and anyone slotted in Roster is logged automatically — you only need to check off the rest.</div>
         </div>
         <div class="actions">
-          <button class="btn btn-primary" id="btn-add-event">+ New Event</button>
+          <button class="btn btn-primary" id="btn-add-event">+ New event</button>
         </div>
       </div>
       <div class="event-list" id="event-list"></div>
@@ -204,10 +204,10 @@
       <div class="view-header">
         <div>
           <div class="view-title">Queues</div>
-          <div class="view-desc">Claim an entry while you're helping, and mark it helped once they're clear.</div>
+          <div class="view-desc">Members who've cleared a run sign others up here — no more losing track of who's covered in guild chat. Claim an entry while you're helping, and mark it helped once they're clear.</div>
         </div>
         <div class="actions">
-          <button class="btn btn-primary" id="btn-queue-add">+ Register member for Queue</button>
+          <button class="btn btn-primary" id="btn-queue-add">+ Register member for queue</button>
         </div>
       </div>
       <div id="queue-admin-list" class="event-list"></div>
@@ -218,7 +218,7 @@
       <div class="view-header">
         <div>
           <div class="view-title">Admin</div>
-          <div class="view-desc">Set guild name and the minimum role counts a party needs before Roster stops flagging it.</div>
+          <div class="view-desc">Set guild name and the minimum role counts a party needs before Roster stops flagging it. Tune these as your comp meta evolves.</div>
         </div>
       </div>
 
@@ -240,7 +240,7 @@
 
       <div class="panel">
         <strong style="font-size:13px;">Composition rules</strong>
-        <div class="view-desc" style="margin-top:4px;">Minimum members required per role, per party. Set to 0(zero) to disable a check.</div>
+        <div class="view-desc" style="margin-top:4px;">Minimum members required per role, per party. Set to 0 to disable a check.</div>
         <div class="rule-grid">
           <div class="rule-item"><label>Tank</label><input type="number" min="0" id="rule-tank" /></div>
           <div class="rule-item"><label>FS</label><input type="number" min="0" id="rule-fs" /></div>
@@ -322,8 +322,8 @@
       <button class="modal-close" data-close-modal="bulk-modal">✕</button>
     </div>
     <div class="field full">
-      <label>One member per line — Name, Class, Role, Gear, Availability</label>
-      <textarea id="bulk-paste" placeholder="Aeris, Paladin, Tank, 190, Available&#10;Lunael, Priest, FS, 175, Available&#10;Kael, Sniper, DPS, 200, Available"></textarea>
+      <label>One member per line — Name, Class, Role, Availability</label>
+      <textarea id="bulk-paste" placeholder="Aeris, Paladin, Tank, Available&#10;Lunael, Priest, FS, Available&#10;Kael, Sniper, DPS, Available"></textarea>
       <div class="field-hint">Paste directly from Excel/Google Sheets (tab-separated) or comma-separated. Unrecognized roles default to DPS, unrecognized availability defaults to Available.</div>
     </div>
     <div class="modal-footer">

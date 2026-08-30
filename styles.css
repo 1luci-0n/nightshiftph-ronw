@@ -32,6 +32,17 @@
   --success: #4cc38a;
   --warn: #e3b341;
 
+  /* Class route colors — applied to IGN text, not role. Chosen bright
+     enough to read clearly on the dark background. */
+  --class-swordsman: #f2665f;
+  --class-mage: #5b9bd5;
+  --class-archer: #e8c547;
+  --class-acolyte: #57c78a;
+  --class-thief: #b47ee8;
+  --class-merchant: #f2994a;
+  --class-gunslinger: #c08552;
+  --class-druid: #45b8ae;
+
   --font-display: "Cinzel", serif;
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -58,6 +69,16 @@ body[data-theme="light"] {
   --gold: #b8862c;
   --gold-dim: #8f6a22;
   --gold-glow: rgba(184, 134, 44, 0.14);
+
+  /* Darker/more saturated so these still read clearly on a white background */
+  --class-swordsman: #c62828;
+  --class-mage: #1565c0;
+  --class-archer: #a68a0a;
+  --class-acolyte: #2e7d32;
+  --class-thief: #8e24aa;
+  --class-merchant: #e65100;
+  --class-gunslinger: #5d4037;
+  --class-druid: #00796b;
 }
 
 * { box-sizing: border-box; }
@@ -414,7 +435,6 @@ table.roster-table tbody td {
 }
 table.roster-table tbody tr:hover td { background: var(--panel-alt); }
 table.roster-table tbody tr:last-child td { border-bottom: none; }
-.gear-num { font-family: var(--font-mono); color: var(--gold); }
 
 .role-chip {
   display: inline-flex;
@@ -429,9 +449,7 @@ table.roster-table tbody tr:last-child td { border-bottom: none; }
   border: 1px solid transparent;
 }
 .role-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.role-Tank    { color: var(--tank);    background: rgba(78,143,227,0.12); border-color: rgba(78,143,227,0.3); }
-.role-FS      { color: var(--healer);  background: rgba(76,195,138,0.12); border-color: rgba(76,195,138,0.3); }
-.role-DPS     { color: var(--dps);     background: rgba(226,87,76,0.12); border-color: rgba(226,87,76,0.3); }
+.role-chip { color: var(--text-dim); background: var(--panel-raised); border-color: var(--border); }
 
 .avail-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 .avail-Available   { background: var(--success); }
@@ -686,10 +704,11 @@ table.roster-table tbody tr:last-child td { border-bottom: none; }
 }
 .slot.filled { border-style: solid; background: var(--panel-raised); }
 .slot.dragover { border-color: var(--gold); background: var(--gold-glow); }
+.slot.highlight { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-glow); background: var(--gold-glow); animation: highlight-pulse 1.6s ease-in-out infinite; }
+@keyframes highlight-pulse { 0%, 100% { box-shadow: 0 0 0 2px var(--gold-glow); } 50% { box-shadow: 0 0 0 4px var(--gold-glow); } }
 .slot .slot-idx { color: var(--text-faint); font-family: var(--font-mono); font-size: 10.5px; width: 14px; }
 .slot .rd { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .slot .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.slot .gr { font-family: var(--font-mono); color: var(--text-faint); font-size: 10.5px; }
 .slot .remove-btn {
   background: none; border: none; color: var(--text-faint); font-size: 13px; padding: 0 2px;
 }
