@@ -71,6 +71,7 @@ const DUNGEONS = [
   { id: "jakk", name: "Jakk", icon: "🎃" },
   { id: "bubble", name: "Bubble Dungeon", icon: "🫧" },
   { id: "twins", name: "Twin Bosses", icon: "👯" },
+  { id: "rift", name: "TimeKeeper", icon: "🕛" }
 ];
 function dungeonById(id) {
   return DUNGEONS.find((d) => d.id === id) || null;
